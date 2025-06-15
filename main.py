@@ -158,7 +158,7 @@ def main():
                         etapa = "draw"
                 elif etapa == "draw":
                     if e.key == K_c:
-                        color_idx = (color_idx + 1) % len(colores)
+                        indice_color = (indice_color + 1) % len(colores)
                     elif e.key in (K_PLUS, K_EQUALS, K_KP_PLUS):
                         espesor += 1
                     elif e.key in (K_MINUS, K_KP_MINUS) and espesor>1:
