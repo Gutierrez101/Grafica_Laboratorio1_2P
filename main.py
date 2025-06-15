@@ -8,29 +8,41 @@ import math
 # =========================
 # Helper: dibujar texto con OpenGL
 # =========================
-def draw_text_gl(text, x, y, font, color=(255,255,255,255)):
+def texto(text, x, y, font, color=(0,0,0,0)):
     """
     Renderiza 'text' con pygame.font a una superficie,
     luego la dibuja en la posición de ventana (x,y) usando glDrawPixels.
     """
-    # Render Pygame -> Surface RGBA
-    surf = font.render(text, True, color[:3])
-    data = pygame.image.tostring(surf, "RGBA", True)
-    w, h = surf.get_size()
-    # Preparar transparencia
+    superficie = font.render(text, True, color[:3])
+    data = pygame.image.tostring(superficie, "RGBA", True)
+    w, h = superficie.get_size()
     glEnable(GL_BLEND)
     glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA)
-    # Posicionar en ventana (origen abajo-izquierda)
     glWindowPos2f(x, y)
-    # Dibujar píxeles
     glDrawPixels(w, h, GL_RGBA, GL_UNSIGNED_BYTE, data)
     glDisable(GL_BLEND)
 
+# =========================
+# Dibuja la cuadrícula
+# =========================
+def cuadricula(width, height, step=20):
+    glColor3f(0.8, 0.8, 0.8)
+    glLineWidth(1)
+    glBegin(GL_LINES)
+    # Líneas verticales
+    for x in range(0, width, step):
+        glVertex2f(x, 0)
+        glVertex2f(x, height)
+    # Líneas horizontales
+    for y in range(0, height, step):
+        glVertex2f(0, y)
+        glVertex2f(width, y)
+    glEnd()
 
 # =========================
 # Algoritmo de Punto Medio
 # =========================
-def midpoint_circle(cx, cy, radius, color, thickness):
+def punto_medio(cx, cy, radius, color, thickness):
     x, y = 0, radius
     d = 1 - radius
     glColor3f(*color)
@@ -40,18 +52,17 @@ def midpoint_circle(cx, cy, radius, color, thickness):
         for dx, dy in [( x, y),( y, x),(-x, y),(-y, x),( x,-y),( y,-x),(-x,-y),(-y,-x)]:
             glVertex2f(cx+dx, cy+dy)
         if d < 0:
-            d += 2*x + 3
+            d += 2*x + 1
         else:
-            d += 2*(x - y) + 5
+            d += 2*(x - y) + 1
             y -= 1
         x += 1
     glEnd()
 
-
 # =========================
 # Algoritmo Paramétrico
 # =========================
-def parametric_circle(cx, cy, radius, color, thickness):
+def parametrico(cx, cy, radius, color, thickness):
     glColor3f(*color)
     glPointSize(thickness)
     glBegin(GL_POINTS)
@@ -61,12 +72,10 @@ def parametric_circle(cx, cy, radius, color, thickness):
                    cy + radius*math.sin(theta))
     glEnd()
 
-
 # =========================
 # Dibuja el menú con opciones
 # =========================
-def draw_menu(selected, font, width, height):
-    # Fondo semitransparente
+def menu(selected, font, width, height):
     glEnable(GL_BLEND)
     glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA)
     glColor4f(0, 0, 0, 0.6)
@@ -78,23 +87,19 @@ def draw_menu(selected, font, width, height):
     glEnd()
     glDisable(GL_BLEND)
 
-    # Texto de opciones
     opts = ["1: Punto Medio", "2: Paramétrico"]
     for i, txt in enumerate(opts):
         color = (255,255,0,255) if i==selected else (200,200,200,255)
         x = 20 + i*250
         y = height - 50
-        draw_text_gl(txt, x, y, font, color)
+        texto(txt, x, y, font, color)
 
-    # Instrucción
-    draw_text_gl("Pulsa ←/→ o 1/2 para elegir, Enter para confirmar", 20, height-70, font)
-
+    texto("Pulsa ←/→ o 1/2 para elegir, Enter para confirmar", 20, height-70, font)
 
 # =========================
 # Programa principal
 # =========================
 def main():
-    # --- Inicialización ---
     pygame.init()
     pygame.font.init()
     font = pygame.font.SysFont("Arial", 20)
@@ -103,7 +108,9 @@ def main():
     pygame.display.set_mode((width, height), DOUBLEBUF|OPENGL)
     pygame.display.set_caption("Círculo: Punto Medio vs Paramétrico")
 
-    # Proyección ortográfica 2D
+    # Configurar fondo blanco
+    glClearColor(1.0, 1.0, 1.0, 1.0)
+
     glViewport(0, 0, width, height)
     glMatrixMode(GL_PROJECTION)
     glLoadIdentity()
@@ -113,30 +120,22 @@ def main():
 
     clock = pygame.time.Clock()
     running = True
-
-    # Estados
-    stage = "menu"          # menu -> select_center -> input_radius -> draw
-    selected = 0            # 0 = Punto Medio, 1 = Paramétrico
+    stage = "menu"
+    selected = 0
     cx = cy = None
     radius = None
     rad_str = ""
-
-    # Colores y grosor
     colors = [(1,0,0),(0,1,0),(0,0,1),(1,1,0),(1,0,1)]
     color_idx = 0
     thickness = 1
 
     while running:
-        # --- Eventos ---
         for e in pygame.event.get():
             if e.type == QUIT:
                 running = False
-
             elif e.type == KEYDOWN:
                 if e.key == K_ESCAPE:
                     running = False
-
-                # Menú: teclas 1/2, ←/→, Enter
                 if stage == "menu":
                     if e.key in (K_LEFT, K_1):
                         selected = (selected - 1) % 2
@@ -144,8 +143,6 @@ def main():
                         selected = (selected + 1) % 2
                     elif e.key in (K_RETURN, K_KP_ENTER):
                         stage = "select_center"
-
-                # Entrada de radio: dígitos, Backspace, Enter
                 elif stage == "input_radius":
                     if K_0 <= e.key <= K_9:
                         rad_str += e.unicode
@@ -157,8 +154,6 @@ def main():
                         except:
                             radius = 50
                         stage = "draw"
-
-                # Control de color y grosor tras dibujar
                 elif stage == "draw":
                     if e.key == K_c:
                         color_idx = (color_idx + 1) % len(colors)
@@ -166,39 +161,32 @@ def main():
                         thickness += 1
                     elif e.key in (K_MINUS, K_KP_MINUS) and thickness>1:
                         thickness -= 1
-
-            # Clic para elegir centro
             elif e.type == MOUSEBUTTONDOWN and stage=="select_center" and e.button==1:
                 mx, my = e.pos
                 cx, cy = mx, height - my
                 stage = "input_radius"
 
-        # --- Render ---
+        # Render
         glClear(GL_COLOR_BUFFER_BIT)
         glLoadIdentity()
 
+        # Dibujar cuadrícula
+        cuadricula(width, height)
+
         if stage == "menu":
-            draw_menu(selected, font, width, height)
-
+            menu(selected, font, width, height)
         elif stage == "select_center":
-            draw_text_gl("Haz clic para elegir centro...", 20, height//2, font)
-
+            texto("Haz clic para elegir centro...", 20, height//2, font)
         elif stage == "input_radius":
-            draw_text_gl("Introduce radio y Enter: " + rad_str + "_", 20, height//2, font)
-
+            texto("Introduce radio y Enter: " + rad_str + "_", 20, height//2, font)
         elif stage == "draw":
-            # Dibuja el círculo con el método elegido
-            method = midpoint_circle if selected==0 else parametric_circle
+            method = punto_medio if selected==0 else parametrico
             method(cx, cy, radius, colors[color_idx], thickness)
-            # Instrucciones
-            draw_text_gl("C: color | + / -: grosor | Esc: salir", 10, 10, font)
+            texto("C: color | + / -: grosor | Esc: salir", 10, 10, font)
 
         pygame.display.flip()
         clock.tick(30)
 
     pygame.quit()
-    sys.exit()
 
-
-if __name__ == "__main__":
-    main()
+main()
