@@ -74,10 +74,12 @@ def parametrico(cx, cy, radius, color, thickness):
 
 # =========================
 # Dibuja el menú con opciones
+# blending es una técnica que permite mezclar colores
+# para crear efectos de transparencia.
 # =========================
 def menu(selected, font, width, height):
-    glEnable(GL_BLEND)
-    glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA)
+    glEnable(GL_BLEND)# Habilita el blending para la transparencia de fondo
+    glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA)# Configura la función de mezcla
     glColor4f(0, 0, 0, 0.6)
     glBegin(GL_QUADS)
     glVertex2f(0, height-80)
@@ -85,7 +87,7 @@ def menu(selected, font, width, height):
     glVertex2f(width, height)
     glVertex2f(0, height)
     glEnd()
-    glDisable(GL_BLEND)
+    glDisable(GL_BLEND)# Deshabilita el blending para evitar afectar otros dibujos
 
     opts = ["1: Punto Medio", "2: Paramétrico"]
     for i, txt in enumerate(opts):
@@ -111,23 +113,23 @@ def main():
     # Configurar fondo blanco
     glClearColor(1.0, 1.0, 1.0, 1.0)
 
-    glViewport(0, 0, width, height)
-    glMatrixMode(GL_PROJECTION)
+    glViewport(0, 0, width, height)# Configurar viewport que define la región de la ventana donde se dibuja
+    glMatrixMode(GL_PROJECTION)# Configurar la matriz de proyección
     glLoadIdentity()
     gluOrtho2D(0, width, 0, height)
-    glMatrixMode(GL_MODELVIEW)
-    glLoadIdentity()
+    glMatrixMode(GL_MODELVIEW)# Configurar la matriz de modelo-vista
+    glLoadIdentity()# Carga la matriz identidad
 
     clock = pygame.time.Clock()
     running = True
-    stage = "menu"
+    etapa = "menu"
     selected = 0
     cx = cy = None
     radius = None
     rad_str = ""
-    colors = [(1,0,0),(0,1,0),(0,0,1),(1,1,0),(1,0,1)]
-    color_idx = 0
-    thickness = 1
+    colores = [(1,0,0),(0,1,0),(0,0,1),(1,1,0),(1,0,1)]
+    indice_color = 0
+    espesor = 1
 
     while running:
         for e in pygame.event.get():
@@ -136,35 +138,35 @@ def main():
             elif e.type == KEYDOWN:
                 if e.key == K_ESCAPE:
                     running = False
-                if stage == "menu":
+                if etapa == "menu":
                     if e.key in (K_LEFT, K_1):
                         selected = (selected - 1) % 2
                     elif e.key in (K_RIGHT, K_2):
                         selected = (selected + 1) % 2
                     elif e.key in (K_RETURN, K_KP_ENTER):
-                        stage = "select_center"
-                elif stage == "input_radius":
+                        etapa = "select_center"
+                elif etapa == "input_radius":
                     if K_0 <= e.key <= K_9:
                         rad_str += e.unicode
                     elif e.key == K_BACKSPACE:
                         rad_str = rad_str[:-1]
                     elif e.key in (K_RETURN, K_KP_ENTER):
                         try:
-                            radius = int(rad_str)
+                            radio = int(rad_str)
                         except:
-                            radius = 50
-                        stage = "draw"
-                elif stage == "draw":
+                            radio = 50
+                        etapa = "draw"
+                elif etapa == "draw":
                     if e.key == K_c:
-                        color_idx = (color_idx + 1) % len(colors)
+                        color_idx = (color_idx + 1) % len(colores)
                     elif e.key in (K_PLUS, K_EQUALS, K_KP_PLUS):
-                        thickness += 1
-                    elif e.key in (K_MINUS, K_KP_MINUS) and thickness>1:
-                        thickness -= 1
-            elif e.type == MOUSEBUTTONDOWN and stage=="select_center" and e.button==1:
+                        espesor += 1
+                    elif e.key in (K_MINUS, K_KP_MINUS) and espesor>1:
+                        espesor -= 1
+            elif e.type == MOUSEBUTTONDOWN and etapa=="select_center" and e.button==1:
                 mx, my = e.pos
                 cx, cy = mx, height - my
-                stage = "input_radius"
+                etapa = "input_radius"
 
         # Render
         glClear(GL_COLOR_BUFFER_BIT)
@@ -173,15 +175,15 @@ def main():
         # Dibujar cuadrícula
         cuadricula(width, height)
 
-        if stage == "menu":
+        if etapa == "menu":
             menu(selected, font, width, height)
-        elif stage == "select_center":
+        elif etapa == "select_center":
             texto("Haz clic para elegir centro...", 20, height//2, font)
-        elif stage == "input_radius":
+        elif etapa == "input_radius":
             texto("Introduce radio y Enter: " + rad_str + "_", 20, height//2, font)
-        elif stage == "draw":
+        elif etapa == "draw":
             method = punto_medio if selected==0 else parametrico
-            method(cx, cy, radius, colors[color_idx], thickness)
+            method(cx, cy, radio, colores[indice_color], espesor)
             texto("C: color | + / -: grosor | Esc: salir", 10, 10, font)
 
         pygame.display.flip()
