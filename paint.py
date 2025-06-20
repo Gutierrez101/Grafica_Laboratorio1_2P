@@ -6,270 +6,227 @@ import math
 import numpy as np
 
 # Inicialización
-globals = {}
 pygame.init()
-width, height = 800, 600
-pygame.display.set_mode((width, height), DOUBLEBUF | OPENGL)
+display = (800, 600)
+pygame.display.set_mode(display, DOUBLEBUF | OPENGL)
 pygame.display.set_caption("Paint OpenGL")
 
 # Configuración de OpenGL
-glViewport(0, 0, width, height)
+glViewport(0, 0, display[0], display[1])
 glMatrixMode(GL_PROJECTION)
 glLoadIdentity()
-glOrtho(0, width, height, 0, -1, 1)
+glOrtho(0, display[0], display[1], 0, -1, 1)
 glMatrixMode(GL_MODELVIEW)
 glLoadIdentity()
 
 # Variables del programa
-drawing = False
-current_tool = "pencil"  # "pencil", "line", "circle", "curve"
-points = []
+dibujo = False
+current_tool = "linea"  # "pencil", "line", "curve"
+puntos = []
+color_defecto = (1.0, 0.0, 0.0)  # Rojo por defecto
 control_points = []
-stored_pixels = []
-stored_lines = []
-stored_curves = []
-stored_circles = []
-current_color = (1.0, 0.0, 0.0)  # Rojo por defecto
+lineas_guardadas = []
+curvas_guardadas = []
+pixiles_guardados = []
 
-# Funciones auxiliares
+# Funciones de dibujo
 def set_color(r, g, b):
     global current_color
     current_color = (r/255.0, g/255.0, b/255.0)
 
-# Dibujo de píxeles, líneas y curvas
-
-def draw_pixel(x, y, store=True):
-    if store:
-        stored_pixels.append((x, y, current_color))
+#Funcione para dibujar pixels
+def dibujar_pixeles(x, y, guardar=True):
+    if guardar:
+        pixiles_guardados.append((x, y, current_color))
     glColor3f(*current_color)
     glBegin(GL_POINTS)
     glVertex2f(x, y)
     glEnd()
 
-
-def draw_line_bresenham(x0, y0, x1, y1, store=True):
-    if store:
-        stored_lines.append((x0, y0, x1, y1, current_color))
+#Funcion para algoritmo de bresenham
+def algoritmo_bresenham(x0, y0, x1, y1, guardar=True):
+    if guardar:
+        lineas_guardadas.append((x0, y0, x1, y1, current_color))
+    
     dx = abs(x1 - x0)
     dy = abs(y1 - y0)
-    steep = dy > dx
-    if steep:
+    paso = dy > dx
+    
+    if paso:
         x0, y0 = y0, x0
         x1, y1 = y1, x1
+    
     if x0 > x1:
         x0, x1 = x1, x0
         y0, y1 = y1, y0
+    
     dx = abs(x1 - x0)
     dy = abs(y1 - y0)
     error = dx // 2
-    y_step = 1 if y0 < y1 else -1
+    paso_y = 1 if y0 < y1 else -1
     y = y0
+    
     glColor3f(*current_color)
     glBegin(GL_POINTS)
+    
     for x in range(int(x0), int(x1) + 1):
-        coord = (y, x) if steep else (x, y)
+        coord = (y, x) if paso else (x, y)
         glVertex2f(coord[0], coord[1])
         error -= dy
         if error < 0:
-            y += y_step
+            y += paso_y
             error += dx
+    
     glEnd()
 
-
-def draw_bezier_curve(points, segments=100, store=True):
-    if len(points) < 3:
+#Funcion de la curva de bezier
+def algoritmo_curva_bezier(puntos, segmentos=100, guardar=True):
+    if len(puntos) < 3:
         return
-    if store:
-        stored_curves.append((points.copy(), current_color))
-    glColor3f(*current_color)
-    glBegin(GL_LINE_STRIP)
-    for i in range(segments + 1):
-        t = i / segments
+    
+    if guardar:
+        curvas_guardadas.append((puntos.copy(), color_defecto))
+    
+    glColor3f(*color_defecto)
+    glBegin(GL_POINTS)
+    
+    for i in range(segmentos + 1):
+        t = i / segmentos
+        # Fórmula de la curva cuadrática de Bézier
         x = (1-t)**2 * points[0][0] + 2*(1-t)*t * points[1][0] + t**2 * points[2][0]
         y = (1-t)**2 * points[0][1] + 2*(1-t)*t * points[1][1] + t**2 * points[2][1]
         glVertex2f(x, y)
+    
     glEnd()
 
-# Dibujo de círculos y cuadrícula
-
-def draw_circle(cx, cy, radius=50, segments=100, store=True):
-    if store:
-        stored_circles.append((cx, cy, radius, current_color))
-    glColor3f(*current_color)
-    glBegin(GL_LINE_LOOP)
-    for i in range(segments):
-        theta = 2.0 * math.pi * i / segments
-        x = cx + radius * math.cos(theta)
-        y = cy + radius * math.sin(theta)
-        glVertex2f(x, y)
+#Funcion para dibujar los puntos de control
+def dibujar_puntos_control():
+    glColor3f(0.0, 0.0, 1.0)  # Azul para puntos de control
+    glPointSize(5.0)
+    glBegin(GL_POINTS)
+    for point in control_points:
+        glVertex2f(point[0], point[1])
     glEnd()
+    glPointSize(1.0)
 
-
-def draw_grid(spacing=20):
-    glColor3f(0.9, 0.9, 0.9)
-    glBegin(GL_LINES)
-    for x in range(0, width, spacing):
-        glVertex2f(x, 40)
-        glVertex2f(x, height)
-    for y in range(40, height, spacing):
-        glVertex2f(0, y)
-        glVertex2f(width, y)
-    glEnd()
-
-# Barra de herramientas
-def draw_toolbar():
-    # Fondo blanco
-    glColor3f(1, 1, 1)
+def dibujar_toolbar():
+    # Dibuja un área para la barra de herramientas
+    glColor3f(0.8, 0.8, 0.8)
     glBegin(GL_QUADS)
     glVertex2f(0, 0)
-    glVertex2f(width, 0)
-    glVertex2f(width, 40)
+    glVertex2f(display[0], 0)
+    glVertex2f(display[0], 40)
     glVertex2f(0, 40)
     glEnd()
+    
+    # Botón de lápiz
+    glColor3f(1.0 if current_tool == "pencil" else 0.6, 0.6, 0.6)
+    glRecti(10, 5, 35, 35)
+    
+    # Botón de línea
+    glColor3f(1.0 if current_tool == "line" else 0.6, 0.6, 0.6)
+    glRecti(40, 5, 65, 35)
+    
+    # Botón de curva
+    glColor3f(1.0 if current_tool == "curve" else 0.6, 0.6, 0.6)
+    glRecti(70, 5, 95, 35)
+    
+    # Selector de color
+    glColor3f(*current_color)
+    glRecti(100, 5, 125, 35)
 
-    # Íconos: línea, círculo, curva
-    icons = [("line", 10), ("circle", 50), ("curve", 90)]
-    for tool, x in icons:
-        glColor3f(1.0 if current_tool == tool else 0.6, 0.6, 0.6)
-        glRecti(x, 5, x + 30, 35)
-        glColor3f(0, 0, 0)
-        glBegin(GL_LINES)
-        if tool == "line":
-            glVertex2f(x + 5, 30)
-            glVertex2f(x + 25, 10)
-        elif tool == "circle":
-            for i in range(20):
-                theta = 2 * math.pi * i / 20
-                glVertex2f(x + 15 + 10 * math.cos(theta), 20 + 10 * math.sin(theta))
-        elif tool == "curve":
-            for t in np.linspace(0, 1, 20):
-                x0, y0 = x + 5, 30
-                x1, y1 = x + 15, 10
-                x2, y2 = x + 25, 30
-                xt = (1 - t) ** 2 * x0 + 2 * (1 - t) * t * x1 + t ** 2 * x2
-                yt = (1 - t) ** 2 * y0 + 2 * (1 - t) * t * y1 + t ** 2 * y2
-                glVertex2f(xt, yt)
-        glEnd()
-
-    # Cuadros vacíos
-    for x in [130, 170]:
-        glColor3f(0.5, 0.5, 0.5)
-        glRecti(x, 5, x + 30, 35)
-
-    # Selección de colores: Rojo, Verde, Azul
-    color_boxes = [(1, 0, 0), (0, 1, 0), (0, 0, 1)]
-    for i, color in enumerate(color_boxes):
-        x = 210 + i * 40
-        glColor3f(*color)
-        glRecti(x, 5, x + 30, 35)
-
-# Redibuja todo
-
-def redraw_all():
-    glClearColor(1, 1, 1, 1)
+def redibujar_elementos():
+    """Redibuja todos los elementos almacenados"""
     glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT)
-    draw_grid()
-
-    # Píxeles
-    for x, y, color in stored_pixels:
+    
+    # Redibuja todos los píxeles
+    for x, y, color in pixiles_guardados:
         glColor3f(*color)
         glBegin(GL_POINTS)
         glVertex2f(x, y)
         glEnd()
-
-    # Líneas
-    for x0, y0, x1, y1, color in stored_lines:
+    
+    # Redibuja todas las líneas
+    for x0, y0, x1, y1, color in lineas_guardadas:
         glColor3f(*color)
-        draw_line_bresenham(x0, y0, x1, y1, store=False)
-
-    # Curvas Bézier
-    for pts, color in stored_curves:
+        algoritmo_bresenham(x0, y0, x1, y1, store=False)
+    
+    # Redibuja todas las curvas
+    for curve_points, color in curvas_guardadas:
         glColor3f(*color)
-        draw_bezier_curve(pts, store=False)
-
-    # Círculos
-    for cx, cy, radius, color in stored_circles:
-        glColor3f(*color)
-        glBegin(GL_LINE_LOOP)
-        for i in range(100):
-            theta = 2.0 * math.pi * i / 100
-            x = cx + radius * math.cos(theta)
-            y = cy + radius * math.sin(theta)
-            glVertex2f(x, y)
-        glEnd()
-
-    draw_toolbar()
-    # Puntos de control curva
-    if current_tool == "curve" and control_points:
-        glColor3f(0, 0, 1)
-        glPointSize(5)
-        glBegin(GL_POINTS)
-        for px, py in control_points:
-            glVertex2f(px, py)
-        glEnd()
-        glPointSize(1)
-
+        algoritmo_curva_bezier(curve_points, store=False)
+    
+    # Dibuja la barra de herramientas
+    dibujar_toolbar()
+    
+    # Dibuja puntos de control para la curva
+    if current_tool == "curve" and len(control_points) > 0:
+        dibujar_puntos_control()
+    
     pygame.display.flip()
 
 # Bucle principal
 running = True
-redraw_all()
+redibujar_elementos()  # Dibuja la pantalla inicial
+
 while running:
     for event in pygame.event.get():
         if event.type == pygame.QUIT:
             running = False
+        
         elif event.type == pygame.MOUSEBUTTONDOWN:
             x, y = event.pos
-            if y > 40:
+            if y > 40:  # Fuera de la barra de herramientas
                 if current_tool == "pencil":
                     drawing = True
-                    draw_pixel(x, y)
-                    redraw_all()
+                    dibujar_pixeles(x, y)
                 elif current_tool == "line":
-                    if not points:
+                    if len(points) == 0:
                         points = [(x, y)]
                     else:
-                        x0, y0 = points[0]
-                        draw_line_bresenham(x0, y0, x, y)
-                        points.clear()
-                        redraw_all()
-                elif current_tool == "circle":
-                    if not points:
-                        points = [(x, y)]
-                    else:
-                        x0, y0 = points[0]
-                        radius = int(math.hypot(x - x0, y - y0))
-                        draw_circle(x0, y0, radius)
-                        points.clear()
-                        redraw_all()
+                        points.append((x, y))
+                        algoritmo_bresenham(points[0][0], points[0][1], points[1][0], points[1][1])
+                        points = []
+                        redibujar_elementos()
                 elif current_tool == "curve":
                     if len(control_points) < 3:
                         control_points.append((x, y))
                         if len(control_points) == 3:
-                            draw_bezier_curve(control_points)
-                            control_points.clear()
-                            redraw_all()
+                            algoritmo_curva_bezier(control_points)
+                            control_points = []
+                            redibujar_elementos()
             else:
-                # Interacción con toolbar
-                if 10 <= x <= 40:
-                    current_tool = "line"; points.clear(); control_points.clear()
-                elif 50 <= x <= 80:
-                    current_tool = "circle"; points.clear(); control_points.clear()
-                elif 90 <= x <= 120:
-                    current_tool = "curve"; points.clear(); control_points.clear()
-                elif 210 <= x <= 240:
-                    set_color(255, 0, 0)
-                elif 250 <= x <= 280:
-                    set_color(0, 255, 0)
-                elif 290 <= x <= 320:
-                    set_color(0, 0, 255)
-                redraw_all()
+                # Manejo de la barra de herramientas
+                if 10 <= x <= 35:
+                    current_tool = "linea"
+                    control_points = []
+                    points = []
+                elif 40 <= x <= 65:
+                    current_tool = "circulo"
+                    control_points = []
+                    points = []
+                elif 70 <= x <= 95:
+                    current_tool = "curva"
+                    points = []
+                elif 100 <= x <= 125:
+                    # Cambiar color (simplificado)
+                    set_color(
+                        (current_color[0] * 255 + 50) % 255,
+                        (current_color[1] * 255 + 100) % 255,
+                        (current_color[2] * 255 + 150) % 255
+                    )
+                redibujar_elementos()
+        
         elif event.type == pygame.MOUSEBUTTONUP:
             drawing = False
-        elif event.type == pygame.MOUSEMOTION and drawing and current_tool == "pencil":
+        
+        elif event.type == pygame.MOUSEMOTION and drawing:
             x, y = event.pos
-            if y > 40:
-                draw_pixel(x, y)
-                redraw_all()
+            if y > 40 and current_tool == "pencil":
+                dibujar_pixeles(x, y)
+                redibujar_elementos()
+    
+    # Control de FPS
     pygame.time.wait(10)
+
 pygame.quit()
