@@ -132,7 +132,7 @@ def dibujar_toolbar():
     glRecti(70, 5, 95, 35)
     
     # Selector de color
-    glColor3f(*current_color)
+    glColor3f(*color_defecto)
     glRecti(100, 5, 125, 35)
 
 def redibujar_elementos():
@@ -218,9 +218,9 @@ while running:
                 redibujar_elementos()
         
         elif event.type == pygame.MOUSEBUTTONUP:
-            drawing = False
+            dibujo = False
         
-        elif event.type == pygame.MOUSEMOTION and drawing:
+        elif event.type == pygame.MOUSEMOTION and dibujo:
             x, y = event.pos
             if y > 40 and current_tool == "pencil":
                 dibujar_pixeles(x, y)
