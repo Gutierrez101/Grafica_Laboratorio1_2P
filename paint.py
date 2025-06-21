@@ -22,7 +22,8 @@ glLoadIdentity()
 
 # Variables del programa
 drawing = False
-current_tool = "pencil"  # "pencil", "line", "circle", "curve"
+current_tool = "pencil"  # "pencil", "line", "circle", "curve", "eraser"
+eraser_size = 15  # Tamaño del borrador
 points = []
 control_points = []
 stored_pixels = []
@@ -38,14 +39,52 @@ def set_color(r, g, b):
 
 # Dibujo de píxeles, líneas y curvas
 
-def draw_pixel(x, y, store=True):
+def draw_pixel(x, y, store=True, color=None, size=1):
+    if color is None:
+        color = current_color
     if store:
-        stored_pixels.append((x, y, current_color))
-    glColor3f(*current_color)
+        stored_pixels.append((x, y, color, size))
+    glColor3f(*color)
+    glPointSize(size)
     glBegin(GL_POINTS)
     glVertex2f(x, y)
     glEnd()
+    glPointSize(1)
 
+def erase_at(x, y):
+    global stored_pixels, stored_lines, stored_circles, stored_curves
+    half = eraser_size // 2
+
+    # Borra puntos
+    stored_pixels = [
+        (px, py, color, size)
+        for (px, py, color, size) in stored_pixels
+        if not (x - half <= px <= x + half and y - half <= py <= y + half)
+    ]
+
+    # Borra líneas si algún extremo está en el área del borrador
+    stored_lines = [
+        (x0, y0, x1, y1, color)
+        for (x0, y0, x1, y1, color) in stored_lines
+        if not (
+            (x - half <= x0 <= x + half and y - half <= y0 <= y + half) or
+            (x - half <= x1 <= x + half and y - half <= y1 <= y + half)
+        )
+    ]
+
+    # Borra círculos si el centro está en el área del borrador
+    stored_circles = [
+        (cx, cy, radius, color)
+        for (cx, cy, radius, color) in stored_circles
+        if not (x - half <= cx <= x + half and y - half <= cy <= y + half)
+    ]
+
+    # Borra curvas si algún punto de control está en el área del borrador
+    stored_curves = [
+        (pts, color)
+        for (pts, color) in stored_curves
+        if not any(x - half <= px <= x + half and y - half <= py <= y + half for (px, py) in pts)
+    ]
 
 def draw_line_bresenham(x0, y0, x1, y1, store=True):
     if store:
@@ -127,14 +166,17 @@ def draw_toolbar():
     glVertex2f(0, 40)
     glEnd()
 
-    # Íconos: línea, círculo, curva
-    icons = [("line", 10), ("circle", 50), ("curve", 90)]
+    # Íconos: lápiz, línea, círculo, curva, borrador
+    icons = [("pencil", 10), ("line", 50), ("circle", 90), ("curve", 130), ("eraser", 170)]
     for tool, x in icons:
         glColor3f(1.0 if current_tool == tool else 0.6, 0.6, 0.6)
         glRecti(x, 5, x + 30, 35)
         glColor3f(0, 0, 0)
         glBegin(GL_LINES)
-        if tool == "line":
+        if tool == "pencil":
+            glVertex2f(x + 5, 30)
+            glVertex2f(x + 25, 10)
+        elif tool == "line":
             glVertex2f(x + 5, 30)
             glVertex2f(x + 25, 10)
         elif tool == "circle":
@@ -149,12 +191,18 @@ def draw_toolbar():
                 xt = (1 - t) ** 2 * x0 + 2 * (1 - t) * t * x1 + t ** 2 * x2
                 yt = (1 - t) ** 2 * y0 + 2 * (1 - t) * t * y1 + t ** 2 * y2
                 glVertex2f(xt, yt)
+        elif tool == "eraser":
+            # Dibuja un cuadrado blanco con borde negro
+            glEnd()
+            glColor3f(1, 1, 1)
+            glRecti(x + 7, 13, x + 23, 29)
+            glColor3f(0, 0, 0)
+            glBegin(GL_LINE_LOOP)
+            glVertex2f(x + 7, 13)
+            glVertex2f(x + 23, 13)
+            glVertex2f(x + 23, 29)
+            glVertex2f(x + 7, 29)
         glEnd()
-
-    # Cuadros vacíos
-    for x in [130, 170]:
-        glColor3f(0.5, 0.5, 0.5)
-        glRecti(x, 5, x + 30, 35)
 
     # Selección de colores: Rojo, Verde, Azul
     color_boxes = [(1, 0, 0), (0, 1, 0), (0, 0, 1)]
@@ -171,11 +219,13 @@ def redraw_all():
     draw_grid()
 
     # Píxeles
-    for x, y, color in stored_pixels:
+    for x, y, color, size in stored_pixels:
         glColor3f(*color)
+        glPointSize(size)
         glBegin(GL_POINTS)
         glVertex2f(x, y)
         glEnd()
+    glPointSize(1)
 
     # Líneas
     for x0, y0, x1, y1, color in stored_lines:
@@ -223,7 +273,11 @@ while running:
             if y > 40:
                 if current_tool == "pencil":
                     drawing = True
-                    draw_pixel(x, y)
+                    draw_pixel(x, y, size=3)
+                    redraw_all()
+                elif current_tool == "eraser":
+                    drawing = True
+                    erase_at(x, y)
                     redraw_all()
                 elif current_tool == "line":
                     if not points:
@@ -252,11 +306,15 @@ while running:
             else:
                 # Interacción con toolbar
                 if 10 <= x <= 40:
-                    current_tool = "line"; points.clear(); control_points.clear()
+                    current_tool = "pencil"; points.clear(); control_points.clear()
                 elif 50 <= x <= 80:
-                    current_tool = "circle"; points.clear(); control_points.clear()
+                    current_tool = "line"; points.clear(); control_points.clear()
                 elif 90 <= x <= 120:
+                    current_tool = "circle"; points.clear(); control_points.clear()
+                elif 130 <= x <= 160:
                     current_tool = "curve"; points.clear(); control_points.clear()
+                elif 170 <= x <= 200:
+                    current_tool = "eraser"; points.clear(); control_points.clear()
                 elif 210 <= x <= 240:
                     set_color(255, 0, 0)
                 elif 250 <= x <= 280:
@@ -266,10 +324,14 @@ while running:
                 redraw_all()
         elif event.type == pygame.MOUSEBUTTONUP:
             drawing = False
-        elif event.type == pygame.MOUSEMOTION and drawing and current_tool == "pencil":
+        elif event.type == pygame.MOUSEMOTION and drawing:
             x, y = event.pos
             if y > 40:
-                draw_pixel(x, y)
-                redraw_all()
+                if current_tool == "pencil":
+                    draw_pixel(x, y, size=3)
+                    redraw_all()
+                elif current_tool == "eraser":
+                    erase_at(x, y)
+                    redraw_all()
     pygame.time.wait(10)
 pygame.quit()
