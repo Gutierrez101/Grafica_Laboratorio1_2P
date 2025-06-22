@@ -23,7 +23,7 @@ glLoadIdentity()
 drawing = False
 current_tool = "pencil"
 eraser_size = 15
-line_width = 3  # Grosor inicial de las líneas
+line_width = 3
 points = []
 control_points = []
 stored_pixels = []
@@ -32,11 +32,72 @@ stored_curves = []
 stored_circles = []
 stored_rectangles = []
 current_color = (1.0, 0.0, 0.0)
-show_grid = True  # Mostrar cuadrícula por defecto
-grid_size = 20  # Tamaño de la cuadrícula
-clipping_rect = None  # (x0, y0, x1, y1) o None si no hay recorte
+show_grid = True
+grid_size = 20
+clipping_rect = None  # (x0, y0, x1, y1)
 
-# Funciones auxiliares
+# Códigos para el algoritmo de Cohen-Sutherland
+INSIDE = 0  # 0000
+LEFT = 1    # 0001
+RIGHT = 2   # 0010
+BOTTOM = 4  # 0100
+TOP = 8     # 1000
+
+def compute_out_code(x, y, clip_rect):
+    code = INSIDE
+    if x < clip_rect[0]:
+        code |= LEFT
+    elif x > clip_rect[2]:
+        code |= RIGHT
+    if y < clip_rect[1]:
+        code |= BOTTOM
+    elif y > clip_rect[3]:
+        code |= TOP
+    return code
+
+def cohen_sutherland_line_clip(x0, y0, x1, y1, clip_rect):
+    outcode0 = compute_out_code(x0, y0, clip_rect)
+    outcode1 = compute_out_code(x1, y1, clip_rect)
+    accept = False
+
+    while True:
+        if not (outcode0 | outcode1):
+            # Ambos puntos están dentro
+            accept = True
+            break
+        elif outcode0 & outcode1:
+            # Ambos puntos están fuera en la misma región
+            break
+        else:
+            # Al menos un punto está fuera, recortar
+            x, y = 0, 0
+            outcode_out = outcode0 if outcode0 else outcode1
+
+            if outcode_out & TOP:
+                x = x0 + (x1 - x0) * (clip_rect[3] - y0) / (y1 - y0)
+                y = clip_rect[3]
+            elif outcode_out & BOTTOM:
+                x = x0 + (x1 - x0) * (clip_rect[1] - y0) / (y1 - y0)
+                y = clip_rect[1]
+            elif outcode_out & RIGHT:
+                y = y0 + (y1 - y0) * (clip_rect[2] - x0) / (x1 - x0)
+                x = clip_rect[2]
+            elif outcode_out & LEFT:
+                y = y0 + (y1 - y0) * (clip_rect[0] - x0) / (x1 - x0)
+                x = clip_rect[0]
+
+            if outcode_out == outcode0:
+                x0, y0 = x, y
+                outcode0 = compute_out_code(x0, y0, clip_rect)
+            else:
+                x1, y1 = x, y
+                outcode1 = compute_out_code(x1, y1, clip_rect)
+
+    if accept:
+        return (x0, y0, x1, y1)
+    else:
+        return None
+
 def set_color(r, g, b):
     global current_color
     current_color = (r/255.0, g/255.0, b/255.0)
@@ -44,6 +105,9 @@ def set_color(r, g, b):
 def draw_pixel(x, y, store=True, color=None, size=3):
     if color is None:
         color = current_color
+    if clipping_rect:
+        if not (clipping_rect[0] <= x <= clipping_rect[2] and clipping_rect[1] <= y <= clipping_rect[3]):
+            return
     if store:
         stored_pixels.append((x, y, color, size))
     glColor3f(*color)
@@ -80,8 +144,15 @@ def erase_at(x, y):
     ]
 
 def draw_line_bresenham(x0, y0, x1, y1, store=True):
+    if clipping_rect:
+        result = cohen_sutherland_line_clip(x0, y0, x1, y1, clipping_rect)
+        if not result:
+            return
+        x0, y0, x1, y1 = result
+
     if store:
         stored_lines.append((x0, y0, x1, y1, current_color, line_width))
+    
     dx = abs(x1 - x0)
     dy = abs(y1 - y0)
     steep = dy > dx
@@ -96,6 +167,7 @@ def draw_line_bresenham(x0, y0, x1, y1, store=True):
     error = dx // 2
     y_step = 1 if y0 < y1 else -1
     y = y0
+    
     glColor3f(*current_color)
     glLineWidth(line_width)
     glBegin(GL_POINTS)
@@ -112,6 +184,7 @@ def draw_line_bresenham(x0, y0, x1, y1, store=True):
 def draw_bezier_curve(pts, segments=100, store=True):
     if store:
         stored_curves.append((pts.copy(), current_color, line_width))
+    
     glColor3f(*current_color)
     glLineWidth(line_width)
     glBegin(GL_LINE_STRIP)
@@ -119,13 +192,18 @@ def draw_bezier_curve(pts, segments=100, store=True):
         t = i / segments
         x = (1 - t) ** 2 * pts[0][0] + 2 * (1 - t) * t * pts[1][0] + t ** 2 * pts[2][0]
         y = (1 - t) ** 2 * pts[0][1] + 2 * (1 - t) * t * pts[1][1] + t ** 2 * pts[2][1]
-        glVertex2f(x, y)
+        if clipping_rect:
+            if clipping_rect[0] <= x <= clipping_rect[2] and clipping_rect[1] <= y <= clipping_rect[3]:
+                glVertex2f(x, y)
+        else:
+            glVertex2f(x, y)
     glEnd()
     glLineWidth(1)
 
 def draw_circle(cx, cy, radius, segments=100, store=True):
     if store:
         stored_circles.append((cx, cy, radius, current_color, line_width))
+    
     glColor3f(*current_color)
     glLineWidth(line_width)
     glBegin(GL_LINE_LOOP)
@@ -133,20 +211,37 @@ def draw_circle(cx, cy, radius, segments=100, store=True):
         theta = 2 * math.pi * i / segments
         x = cx + radius * math.cos(theta)
         y = cy + radius * math.sin(theta)
-        glVertex2f(x, y)
+        if clipping_rect:
+            if clipping_rect[0] <= x <= clipping_rect[2] and clipping_rect[1] <= y <= clipping_rect[3]:
+                glVertex2f(x, y)
+        else:
+            glVertex2f(x, y)
     glEnd()
     glLineWidth(1)
 
 def draw_rectangle(x0, y0, x1, y1, store=True):
     if store:
         stored_rectangles.append((x0, y0, x1, y1, current_color, line_width))
+    
     glColor3f(*current_color)
     glLineWidth(line_width)
     glBegin(GL_LINE_LOOP)
-    glVertex2f(x0, y0)
-    glVertex2f(x1, y0)
-    glVertex2f(x1, y1)
-    glVertex2f(x0, y1)
+    # Aplicar recorte a cada línea del rectángulo
+    points = [
+        (x0, y0), (x1, y0), (x1, y1), (x0, y1)
+    ]
+    for i in range(4):
+        xa, ya = points[i]
+        xb, yb = points[(i + 1) % 4]
+        if clipping_rect:
+            result = cohen_sutherland_line_clip(xa, ya, xb, yb, clipping_rect)
+            if result:
+                xa, ya, xb, yb = result
+                glVertex2f(xa, ya)
+                glVertex2f(xb, yb)
+        else:
+            glVertex2f(xa, ya)
+            glVertex2f(xb, yb)
     glEnd()
     glLineWidth(1)
 
@@ -154,7 +249,7 @@ def draw_grid():
     if not show_grid:
         return
         
-    glColor3f(0.9, 0.9, 0.9)  # Color claro para la cuadrícula
+    glColor3f(0.9, 0.9, 0.9)
     glLineWidth(1)
     glBegin(GL_LINES)
     
@@ -213,53 +308,35 @@ def draw_icon(tool, x):
         glVertex2f(x + 23, 29); glVertex2f(x + 7, 29)
         glEnd()
     elif tool == "rectangle":
-        # Icono de rectángulo mejorado con relleno y bordes
-        glColor3f(0.7, 0.7, 0.9)  # Color de fondo azul claro
+        glColor3f(0.7, 0.7, 0.9)
         glRecti(x + 8, 12, x + 22, 28)
-        glColor3f(0, 0, 0)  # Borde negro
+        glColor3f(0, 0, 0)
         glLineWidth(2)
         glBegin(GL_LINE_LOOP)
         glVertex2f(x + 8, 12); glVertex2f(x + 22, 12)
         glVertex2f(x + 22, 28); glVertex2f(x + 8, 28)
         glEnd()
-        # Pequeño rectángulo interno para mejor visualización
-        glColor3f(0.5, 0.5, 0.7)
-        glRecti(x + 10, 14, x + 20, 18)
-        glColor3f(0, 0, 0)
-        glBegin(GL_LINE_LOOP)
-        glVertex2f(x + 10, 14); glVertex2f(x + 20, 14)
-        glVertex2f(x + 20, 18); glVertex2f(x + 10, 18)
-        glEnd()
     elif tool == "crop":
-        # Nuevo icono de recorte (crop) más representativo
-        glColor3f(0.7, 0.7, 0.9)  # Fondo azul claro
+        glColor3f(0.7, 0.7, 0.9)
         glRecti(x + 5, 10, x + 25, 30)
-        
-        # Área de recorte (rectángulo central blanco)
         glColor3f(1, 1, 1)
         glRecti(x + 10, 15, x + 20, 25)
-        
-        # Bordes del icono
         glColor3f(0, 0, 0)
         glLineWidth(1)
         glBegin(GL_LINE_LOOP)
         glVertex2f(x + 5, 10); glVertex2f(x + 25, 10)
         glVertex2f(x + 25, 30); glVertex2f(x + 5, 30)
         glEnd()
-        
-        # Tijeras representadas con dos líneas diagonales
         glLineWidth(2)
         glBegin(GL_LINES)
-        # Mangos de las tijeras
         glVertex2f(x + 7, 12); glVertex2f(x + 13, 18)
         glVertex2f(x + 23, 12); glVertex2f(x + 17, 18)
-        # Hojas de las tijeras
         glVertex2f(x + 13, 18); glVertex2f(x + 15, 20)
         glVertex2f(x + 17, 18); glVertex2f(x + 15, 20)
         glEnd()
 
 def draw_toolbar():
-    glColor3f(0.9, 0.9, 0.9)  # Fondo gris claro
+    glColor3f(0.9, 0.9, 0.9)
     glBegin(GL_QUADS)
     glVertex2f(0, 0)
     glVertex2f(width, 0)
@@ -267,7 +344,6 @@ def draw_toolbar():
     glVertex2f(0, 40)
     glEnd()
     
-    # Borde inferior
     glColor3f(0.6, 0.6, 0.6)
     glLineWidth(2)
     glBegin(GL_LINES)
@@ -278,7 +354,6 @@ def draw_toolbar():
     tools = ["pencil", "line", "circle", "curve", "eraser", "rectangle", "crop"]
     for i, tool in enumerate(tools):
         x = 10 + i * 40
-        # Resaltar la herramienta seleccionada
         if tool == current_tool:
             glColor3f(0.7, 0.7, 0.9)
             glRecti(x - 2, 3, x + 32, 37)
@@ -287,14 +362,11 @@ def draw_toolbar():
         glRecti(x, 5, x + 30, 35)
         draw_icon(tool, x)
     
-    # Colores
     colors = [(255, 0, 0), (0, 255, 0), (0, 0, 255), (0, 0, 0), (255, 255, 255)]
-    color_names = ["Rojo", "Verde", "Azul", "Negro", "Blanco"]
     for i, (r, g, b) in enumerate(colors):
-        cx = 290 + i * 35  # Ajustado para acomodar el nuevo icono
+        cx = 290 + i * 35
         glColor3f(r / 255.0, g / 255.0, b / 255.0)
         glRecti(cx, 5, cx + 30, 35)
-        # Borde para los colores
         glColor3f(0.3, 0.3, 0.3)
         glLineWidth(1)
         glBegin(GL_LINE_LOOP)
@@ -302,9 +374,8 @@ def draw_toolbar():
         glVertex2f(cx + 30, 35); glVertex2f(cx, 35)
         glEnd()
     
-    # Indicador de grosor de línea
     glColor3f(0.2, 0.2, 0.2)
-    glRasterPos2f(470, 25)  # Ajustada posición por el nuevo icono
+    glRasterPos2f(470, 25)
     text = f"Grosor: {line_width} (T/G para cambiar)"
     for char in text:
         pygame.font.init()
@@ -319,14 +390,7 @@ def redraw_all():
     glClearColor(1, 1, 1, 1)
     glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT)
     
-    # Dibujar cuadrícula primero (fondo)
     draw_grid()
-    
-    # Habilitar el recorte si hay un rectángulo de recorte
-    if clipping_rect:
-        x0, y0, x1, y1 = clipping_rect
-        glEnable(GL_SCISSOR_TEST)
-        glScissor(x0, height - y1, x1 - x0, y1 - y0)
     
     # Dibujar elementos almacenados
     for x, y, color, size in stored_pixels:
@@ -348,11 +412,9 @@ def redraw_all():
         glLineWidth(width)
         draw_rectangle(x0, y0, x1, y1, store=False)
     
-    # Deshabilitar el recorte para dibujar el rectángulo de recorte y la barra de herramientas
+    # Dibujar área de recorte si existe
     if clipping_rect:
-        glDisable(GL_SCISSOR_TEST)
-        
-        # Dibujar el borde del área de recorte
+        x0, y0, x1, y1 = clipping_rect
         glColor3f(0.5, 0.5, 0.8)
         glLineWidth(1)
         glBegin(GL_LINE_LOOP)
@@ -362,7 +424,6 @@ def redraw_all():
         glVertex2f(x0, y1)
         glEnd()
         
-        # Dibujar líneas diagonales para indicar el área externa
         glColor4f(0.7, 0.7, 0.9, 0.5)
         glBegin(GL_QUADS)
         glVertex2f(0, 0); glVertex2f(width, 0)
@@ -373,12 +434,9 @@ def redraw_all():
         glVertex2f(x1, y0); glVertex2f(x0, y1)
         glEnd()
     
-    # Dibujar barra de herramientas
     draw_toolbar()
-    
     pygame.display.flip()
 
-# Modifica el bucle principal para maanejar el recorte
 running = True
 redraw_all()
 while running:
@@ -390,10 +448,7 @@ while running:
             if y > 40:
                 if current_tool == "pencil":
                     drawing = True
-                    if clipping_rect and not (clipping_rect[0] <= x <= clipping_rect[2] and clipping_rect[1] <= y <= clipping_rect[3]):
-                        pass  # No dibujar fuera del área de recorte
-                    else:
-                        draw_pixel(x, y)
+                    draw_pixel(x, y)
                 elif current_tool == "eraser":
                     drawing = True
                     erase_at(x, y)
@@ -422,22 +477,19 @@ while running:
                 elif current_tool == "crop":
                     points.append((x, y))
                     if len(points) == 2:
-                        # Establecer el nuevo rectángulo de recorte
                         x0, y0 = min(points[0][0], points[1][0]), min(points[0][1], points[1][1])
                         x1, y1 = max(points[0][0], points[1][0]), max(points[0][1], points[1][1])
                         clipping_rect = (x0, y0, x1, y1)
                         points.clear()
                 redraw_all()
             else:
-                # Verificar clic en herramientas
                 tools = ["pencil", "line", "circle", "curve", "eraser", "rectangle", "crop"]
                 for i, tool in enumerate(tools):
                     if 10 + i * 40 <= x <= 40 + i * 40:
                         current_tool = tool
                         if tool != "crop":
-                            clipping_rect = None  # Desactivar recorte al seleccionar otra herramienta
+                            clipping_rect = None
                 
-                # Verificar clic en colores
                 colors = [(255, 0, 0), (0, 255, 0), (0, 0, 255), (0, 0, 0), (255, 255, 255)]
                 for i, (r, g, b) in enumerate(colors):
                     if 290 + i * 35 <= x <= 320 + i * 35:
@@ -451,24 +503,21 @@ while running:
             x, y = event.pos
             if y > 40:
                 if current_tool == "pencil":
-                    if clipping_rect and not (clipping_rect[0] <= x <= clipping_rect[2] and clipping_rect[1] <= y <= clipping_rect[3]):
-                        pass  # No dibujar fuera del área de recorte
-                    else:
-                        draw_pixel(x, y)
+                    draw_pixel(x, y)
                 elif current_tool == "eraser":
                     erase_at(x, y)
                 redraw_all()
         elif event.type == pygame.KEYDOWN:
-            if event.key == pygame.K_g:  # Tecla G para mostrar/ocultar cuadrícula
+            if event.key == pygame.K_g:
                 show_grid = not show_grid
                 redraw_all()
-            elif event.key == pygame.K_t:  # Tecla T para aumentar grosor
+            elif event.key == pygame.K_t:
                 line_width = min(10, line_width + 1)
                 redraw_all()
-            elif event.key == pygame.K_g and pygame.key.get_mods() & pygame.KMOD_SHIFT:  # Shift+G para disminuir grosor
+            elif event.key == pygame.K_g and pygame.key.get_mods() & pygame.KMOD_SHIFT:
                 line_width = max(1, line_width - 1)
                 redraw_all()
-            elif event.key == pygame.K_ESCAPE:  # Tecla ESC para cancelar recorte
+            elif event.key == pygame.K_ESCAPE:
                 clipping_rect = None
                 redraw_all()
     
