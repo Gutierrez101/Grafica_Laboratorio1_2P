@@ -514,7 +514,7 @@ while running:
             elif event.key == pygame.K_t:
                 line_width = min(10, line_width + 1)
                 redraw_all()
-            elif event.key == pygame.K_g and pygame.key.get_mods() & pygame.KMOD_SHIFT:
+            elif event.key == pygame.K_g and pygame.key.get_mods() & pygame.K_q:
                 line_width = max(1, line_width - 1)
                 redraw_all()
             elif event.key == pygame.K_ESCAPE:
