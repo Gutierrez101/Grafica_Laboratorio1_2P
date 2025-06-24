@@ -11,7 +11,7 @@ IZQUIERDA = 1
 DERECHA = 2
 ABAJO = 4
 ARRIBA = 8
-
+#Funcion para inicializar pygame y OpenGL
 def inicializar_pygame(ancho=800, alto=600):
     pygame.init()
     pantalla = pygame.display.set_mode((ancho, alto), DOUBLEBUF | OPENGL)
@@ -44,7 +44,8 @@ def inicializar_pygame(ancho=800, alto=600):
         'area_recorte': None,
         'area_recorte_temporal': None
     }
-
+#Funciones de recorte de lineas
+# Algoritmo de recorte de Cohen-Sutherland
 def calcular_codigo(x, y, rectangulo_recorte):
     codigo = DENTRO
     if x < rectangulo_recorte[0]:
@@ -96,10 +97,13 @@ def recortar_linea_cohen_sutherland(x0, y0, x1, y1, rectangulo_recorte):
         return (x0, y0, x1, y1)
     return None
 
+# Funciones de dibujo
+# Establecer el color actual
 def establecer_color(estado, r, g, b):
     estado['color_actual'] = (r/255.0, g/255.0, b/255.0)
     return estado
-
+# Dibujar un pixel
+# Esta función dibuja un pixel en la posición (x, y) con el color y
 def dibujar_pixel(estado, x, y, almacenar=True, color=None, tamanho=None):
     if color is None:
         color = estado['color_actual']
@@ -115,6 +119,8 @@ def dibujar_pixel(estado, x, y, almacenar=True, color=None, tamanho=None):
     glPointSize(1)
     return estado
 
+# Borrar en una posición (x, y)
+# Esta función borra un área cuadrada centrada en (x, y) del tamaño
 def borrar_en(estado, x, y):
     mitad = estado['tamanho_borrador'] // 2
     estado['pixeles_almacenados'] = [
@@ -141,6 +147,7 @@ def borrar_en(estado, x, y):
     ]
     return estado
 
+# Dibujar una línea usando el algoritmo de Bresenham
 def dibujar_linea_bresenham(estado, x0, y0, x1, y1, almacenar=True):
     if almacenar:
         estado['lineas_almacenadas'].append((x0, y0, x1, y1, estado['color_actual'], estado['grosor_linea']))
@@ -175,6 +182,8 @@ def dibujar_linea_bresenham(estado, x0, y0, x1, y1, almacenar=True):
     glLineWidth(1)
     return estado
 
+# Dibujar una curva Bezier cuadrática
+# Esta función dibuja una curva Bezier cuadrática usando tres puntos de control
 def dibujar_curva_bezier(estado, puntos_control, segmentos=100, almacenar=True):
     if almacenar:
         estado['curvas_almacenadas'].append((puntos_control.copy(), estado['color_actual'], estado['grosor_linea']))
@@ -191,6 +200,8 @@ def dibujar_curva_bezier(estado, puntos_control, segmentos=100, almacenar=True):
     glLineWidth(1)
     return estado
 
+# Dibujar un círculo
+# Esta función dibuja un círculo centrado en (cx, cy) con un radio dado
 def dibujar_circulo(estado, cx, cy, radio, segmentos=100, almacenar=True):
     if almacenar:
         estado['circulos_almacenados'].append((cx, cy, radio, estado['color_actual'], estado['grosor_linea']))
@@ -207,6 +218,8 @@ def dibujar_circulo(estado, cx, cy, radio, segmentos=100, almacenar=True):
     glLineWidth(1)
     return estado
 
+# Dibujar un rectángulo
+# Esta función dibuja un rectángulo definido por dos esquinas opuestas (x0, y0) y (x1, y1)
 def dibujar_rectangulo(estado, x0, y0, x1, y1, almacenar=True):
     if almacenar:
         estado['rectangulos_almacenados'].append((x0, y0, x1, y1, estado['color_actual'], estado['grosor_linea']))
@@ -222,6 +235,8 @@ def dibujar_rectangulo(estado, x0, y0, x1, y1, almacenar=True):
     glLineWidth(1)
     return estado
 
+# Dibujar una cuadrícula
+# Esta función dibuja una cuadrícula en el fondo de la ventana
 def dibujar_cuadricula(estado):
     if not estado['mostrar_cuadricula']:
         return
@@ -240,6 +255,8 @@ def dibujar_cuadricula(estado):
     
     glEnd()
 
+# Dibujar iconos de herramientas
+# Esta función dibuja los iconos de las herramientas en la barra de herramientas
 def dibujar_icono(herramienta, x):
     if herramienta == "lapiz":
         glColor3f(0, 0, 0)
@@ -310,6 +327,8 @@ def dibujar_icono(herramienta, x):
         glVertex2f(x + 17, 18); glVertex2f(x + 15, 20)
         glEnd()
 
+# Dibujar la barra de herramientas
+# Esta función dibuja la barra de herramientas en la parte superior de la ventana
 def dibujar_barra_herramientas(estado):
     glColor3f(0.9, 0.9, 0.9)
     glBegin(GL_QUADS)
@@ -361,6 +380,8 @@ def dibujar_barra_herramientas(estado):
                     GL_RGBA, GL_UNSIGNED_BYTE, datos_textura)
         glRasterPos2f(glGetDoublev(GL_CURRENT_RASTER_POSITION)[0] + superficie_texto.get_width(), 25)
 
+# Aplicar recorte a los elementos almacenados
+# Esta función recorta los elementos almacenados según el área de recorte definida
 def aplicar_recorte(estado):
     if not estado['area_recorte']:
         return estado
@@ -402,6 +423,8 @@ def aplicar_recorte(estado):
     estado['area_recorte'] = None
     return estado
 
+# Redibujar todo el contenido de la ventana
+# Esta función redibuja todos los elementos almacenados y la cuadrícula
 def redibujar_todo(estado):
     glClearColor(1, 1, 1, 1)
     glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT)
@@ -476,6 +499,8 @@ def redibujar_todo(estado):
     pygame.display.flip()
     return estado
 
+# Función principal del programa
+# Esta función inicializa Pygame, configura el estado inicial y maneja el bucle
 def main():
     estado = inicializar_pygame()
     estado = redibujar_todo(estado)
