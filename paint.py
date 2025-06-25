@@ -4,6 +4,7 @@ from OpenGL.GL import *
 from OpenGL.GLU import *
 import math
 import numpy as np
+from numpy.linalg import inv
 
 # Constantes
 DENTRO = 0
@@ -11,7 +12,39 @@ IZQUIERDA = 1
 DERECHA = 2
 ABAJO = 4
 ARRIBA = 8
-#Funcion para inicializar pygame y OpenGL
+SELECCIONAR = 'seleccionar'
+
+# Funciones de transformación con matrices
+def crear_matriz_traslacion(tx, ty):
+    return np.array([
+        [1, 0, tx],
+        [0, 1, ty],
+        [0, 0, 1]
+    ])
+
+def crear_matriz_rotacion(angulo):
+    rad = math.radians(angulo)
+    cos=math.cos(rad)
+    sin=math.sin(rad)
+    return np.array([
+        [cos, -sin, 0],
+        [sin, cos, 0],
+        [0, 0, 1]
+    ])
+
+def crear_matriz_escala(sx, sy):
+    return np.array([
+        [sx, 0, 0],
+        [0, sy, 0],
+        [0, 0, 1]
+    ])
+
+def aplicar_transformacion(punto, matriz):
+    x, y = punto
+    punto_homogeneo = np.array([x, y, 1])
+    transformado = matriz.dot(punto_homogeneo)
+    return (transformado[0], transformado[1])
+
 def inicializar_pygame(ancho=800, alto=600):
     pygame.init()
     pantalla = pygame.display.set_mode((ancho, alto), DOUBLEBUF | OPENGL)
@@ -40,12 +73,161 @@ def inicializar_pygame(ancho=800, alto=600):
         'rectangulos_almacenados': [],
         'color_actual': (1.0, 0.0, 0.0),
         'mostrar_cuadricula': True,
-        'tamanho_cuadricula': 20,
+        'tamanio_cuadricula': 20,
         'area_recorte': None,
-        'area_recorte_temporal': None
+        'area_recorte_temporal': None,
+        'figura_seleccionada': None,
+        'tipo_figura_seleccionada': None,
+        'angulo_rotacion': 0,
+        'factor_escala': 1.0,
+        'modo_transformacion': None,
+        'centro_transformacion': None
     }
-#Funciones de recorte de lineas
-# Algoritmo de recorte de Cohen-Sutherland
+
+def dibujar_cuadricula(estado):
+    if not estado['mostrar_cuadricula']:
+        return
+    
+    glColor3f(0.9, 0.9, 0.9)
+    glLineWidth(1)
+    glBegin(GL_LINES)
+    
+    for x in range(0, estado['ancho'], estado['tamanio_cuadricula']):
+        glVertex2f(x, 40)
+        glVertex2f(x, estado['alto'])
+    
+    for y in range(40, estado['alto'], estado['tamanio_cuadricula']):
+        glVertex2f(0, y)
+        glVertex2f(estado['ancho'], y)
+    
+    glEnd()
+
+def establecer_color(estado, r, g, b):
+    estado['color_actual'] = (r/255.0, g/255.0, b/255.0)
+    return estado
+
+def dibujar_pixel(estado, x, y, almacenar=True, color=None, tamanho=None):
+    if color is None:
+        color = estado['color_actual']
+    if tamanho is None:
+        tamanho = estado['grosor_linea']
+    if almacenar:
+        estado['pixeles_almacenados'].append((x, y, color, tamanho))
+    glColor3f(*color)
+    glPointSize(tamanho)
+    glBegin(GL_POINTS)
+    glVertex2f(x, y)
+    glEnd()
+    glPointSize(1)
+    return estado
+
+def borrar_en(estado, x, y):
+    mitad = estado['tamanho_borrador'] // 2
+    estado['pixeles_almacenados'] = [
+        (px, py, color, tamanho) for (px, py, color, tamanho) in estado['pixeles_almacenados']
+        if not (x - mitad <= px <= x + mitad and y - mitad <= py <= y + mitad)
+    ]
+    estado['lineas_almacenadas'] = [
+        linea for linea in estado['lineas_almacenadas']
+        if not ((x - mitad <= linea[0] <= x + mitad and y - mitad <= linea[1] <= y + mitad) or
+                (x - mitad <= linea[2] <= x + mitad and y - mitad <= linea[3] <= y + mitad))
+    ]
+    estado['circulos_almacenados'] = [
+        circulo for circulo in estado['circulos_almacenados']
+        if not (x - mitad <= circulo[0] <= x + mitad and y - mitad <= circulo[1] <= y + mitad)
+    ]
+    estado['curvas_almacenadas'] = [
+        curva for curva in estado['curvas_almacenadas']
+        if not any(x - mitad <= px <= x + mitad and y - mitad <= py <= y + mitad for (px, py) in curva[0])
+    ]
+    estado['rectangulos_almacenados'] = [
+        rect for rect in estado['rectangulos_almacenados']
+        if not ((x - mitad <= rect[0] <= x + mitad and y - mitad <= rect[1] <= y + mitad) or
+                (x - mitad <= rect[2] <= x + mitad and y - mitad <= rect[3] <= y + mitad))
+    ]
+    return estado
+
+def dibujar_linea_bresenham(estado, x0, y0, x1, y1, almacenar=True):
+    if almacenar:
+        estado['lineas_almacenadas'].append((x0, y0, x1, y1, estado['color_actual'], estado['grosor_linea']))
+    
+    dx = abs(x1 - x0)
+    dy = abs(y1 - y0)
+    empinada = dy > dx
+    if empinada:
+        x0, y0 = y0, x0
+        x1, y1 = y1, x1
+    if x0 > x1:
+        x0, x1 = x1, x0
+        y0, y1 = y1, y0
+    
+    dx = abs(x1 - x0)
+    dy = abs(y1 - y0)
+    error = dx // 2
+    paso_y = 1 if y0 < y1 else -1
+    y = y0
+    
+    glColor3f(*estado['color_actual'])
+    glPointSize(estado['grosor_linea'])
+    glBegin(GL_POINTS)
+    for x in range(int(x0), int(x1) + 1):
+        coord = (y, x) if empinada else (x, y)
+        glVertex2f(coord[0], coord[1])
+        error -= dy
+        if error < 0:
+            y += paso_y
+            error += dx
+    glEnd()
+    glPointSize(1)
+    return estado
+
+def dibujar_curva_bezier(estado, puntos_control, segmentos=100, almacenar=True):
+    if almacenar:
+        estado['curvas_almacenadas'].append((puntos_control.copy(), estado['color_actual'], estado['grosor_linea']))
+    
+    glColor3f(*estado['color_actual'])
+    glPointSize(estado['grosor_linea'])
+    glBegin(GL_POINTS)
+    for i in range(segmentos + 1):
+        t = i / segmentos
+        x = (1 - t) ** 2 * puntos_control[0][0] + 2 * (1 - t) * t * puntos_control[1][0] + t ** 2 * puntos_control[2][0]
+        y = (1 - t) ** 2 * puntos_control[0][1] + 2 * (1 - t) * t * puntos_control[1][1] + t ** 2 * puntos_control[2][1]
+        glVertex2f(x, y)
+    glEnd()
+    glPointSize(1)
+    return estado
+
+def dibujar_circulo(estado, cx, cy, radio, segmentos=100, almacenar=True):
+    if almacenar:
+        estado['circulos_almacenados'].append((cx, cy, radio, estado['color_actual'], estado['grosor_linea']))
+    
+    glColor3f(*estado['color_actual'])
+    glPointSize(estado['grosor_linea'])
+    glBegin(GL_POINTS)
+    for i in range(segmentos):
+        angulo = 2 * math.pi * i / segmentos
+        x = cx + radio * math.cos(angulo)
+        y = cy + radio * math.sin(angulo)
+        glVertex2f(x, y)
+    glEnd()
+    glPointSize(1)
+    return estado
+
+def dibujar_rectangulo(estado, x0, y0, x1, y1, almacenar=True):
+    if almacenar:
+        estado['rectangulos_almacenados'].append((x0, y0, x1, y1, estado['color_actual'], estado['grosor_linea']))
+    
+    glColor3f(*estado['color_actual'])
+    glLineWidth(estado['grosor_linea'])
+    glBegin(GL_LINE_LOOP)
+    glVertex2f(x0, y0)
+    glVertex2f(x1, y0)
+    glVertex2f(x1, y1)
+    glVertex2f(x0, y1)
+    glEnd()
+    glLineWidth(1)
+    return estado
+
 def calcular_codigo(x, y, rectangulo_recorte):
     codigo = DENTRO
     if x < rectangulo_recorte[0]:
@@ -97,166 +279,218 @@ def recortar_linea_cohen_sutherland(x0, y0, x1, y1, rectangulo_recorte):
         return (x0, y0, x1, y1)
     return None
 
-# Funciones de dibujo
-# Establecer el color actual
-def establecer_color(estado, r, g, b):
-    estado['color_actual'] = (r/255.0, g/255.0, b/255.0)
-    return estado
-# Dibujar un pixel
-# Esta función dibuja un pixel en la posición (x, y) con el color y
-def dibujar_pixel(estado, x, y, almacenar=True, color=None, tamanho=None):
-    if color is None:
-        color = estado['color_actual']
-    if tamanho is None:
-        tamanho = estado['grosor_linea']
-    if almacenar:
-        estado['pixeles_almacenados'].append((x, y, color, tamanho))
-    glColor3f(*color)
-    glPointSize(tamanho)
-    glBegin(GL_POINTS)
-    glVertex2f(x, y)
-    glEnd()
-    glPointSize(1)
+def punto_en_circulo(punto, centro, radio):
+    distancia = math.hypot(punto[0] - centro[0], punto[1] - centro[1])
+    return distancia <= radio
+
+def punto_en_rectangulo(punto, rect):
+    x, y = punto
+    x0, y0, x1, y1 = rect
+    return min(x0, x1) <= x <= max(x0, x1) and min(y0, y1) <= y <= max(y0, y1)
+
+def punto_en_linea(punto, linea, umbral=5):
+    x, y = punto
+    x0, y0, x1, y1 = linea
+    
+    if x0 == x1 and y0 == y1:
+        return math.hypot(x - x0, y - y0) <= umbral
+    
+    longitud = math.hypot(x1 - x0, y1 - y0)
+    if longitud == 0:
+        return math.hypot(x - x0, y - y0) <= umbral
+    
+    t = ((x - x0) * (x1 - x0) + (y - y0) * (y1 - y0)) / (longitud ** 2)
+    t = max(0, min(1, t))
+    proy_x = x0 + t * (x1 - x0)
+    proy_y = y0 + t * (y1 - y0)
+    
+    distancia = math.hypot(x - proy_x, y - proy_y)
+    return distancia <= umbral
+
+def seleccionar_figura(estado, x, y):
+    for i, circulo in enumerate(estado['circulos_almacenados']):
+        cx, cy, radio, color, grosor = circulo
+        if punto_en_circulo((x, y), (cx, cy), radio + grosor):
+            return ('circulo', i)
+    
+    for i, rect in enumerate(estado['rectangulos_almacenados']):
+        x0, y0, x1, y1, color, grosor = rect
+        if punto_en_rectangulo((x, y), (x0, y0, x1, y1)):
+            return ('rectangulo', i)
+    
+    for i, linea in enumerate(estado['lineas_almacenadas']):
+        x0, y0, x1, y1, color, grosor = linea
+        if punto_en_linea((x, y), (x0, y0, x1, y1), grosor + 2):
+            return ('linea', i)
+    
+    for i, curva in enumerate(estado['curvas_almacenadas']):
+        puntos_control, color, grosor = curva
+        for px, py in puntos_control:
+            if math.hypot(x - px, y - py) <= grosor + 5:
+                return ('curva', i)
+    
+    return None
+
+def rotar_figura(estado, angulo):
+    if not estado['figura_seleccionada']:
+        return estado
+    
+    tipo, indice = estado['figura_seleccionada']
+    
+    if tipo == 'circulo':
+        # Rotar un círculo no cambia su apariencia, pero podemos rotar su posición si queremos
+        cx, cy, radio, color, grosor = estado['circulos_almacenados'][indice]
+        centro_x, centro_y = cx, cy
+        
+        T1 = crear_matriz_traslacion(-centro_x, -centro_y)
+        R = crear_matriz_rotacion(angulo)
+        T2 = crear_matriz_traslacion(centro_x, centro_y)
+        M = T2.dot(R).dot(T1)
+        
+        nuevo_cx, nuevo_cy = aplicar_transformacion((cx, cy), M)
+        estado['circulos_almacenados'][indice] = (nuevo_cx, nuevo_cy, radio, color, grosor)
+    
+    elif tipo == 'rectangulo':
+        x0, y0, x1, y1, color, grosor = estado['rectangulos_almacenados'][indice]
+        centro_x = (x0 + x1) / 2
+        centro_y = (y0 + y1) / 2
+        
+        T1 = crear_matriz_traslacion(-centro_x, -centro_y)
+        R = crear_matriz_rotacion(angulo)
+        T2 = crear_matriz_traslacion(centro_x, centro_y)
+        M = T2.dot(R).dot(T1)
+        
+        x0n, y0n = aplicar_transformacion((x0, y0), M)
+        x1n, y1n = aplicar_transformacion((x1, y1), M)
+        
+        estado['rectangulos_almacenados'][indice] = (x0n, y0n, x1n, y1n, color, grosor)
+    
+    elif tipo == 'linea':
+        x0, y0, x1, y1, color, grosor = estado['lineas_almacenadas'][indice]
+        centro_x = (x0 + x1) / 2
+        centro_y = (y0 + y1) / 2
+        
+        T1 = crear_matriz_traslacion(-centro_x, -centro_y)
+        R = crear_matriz_rotacion(angulo)
+        T2 = crear_matriz_traslacion(centro_x, centro_y)
+        M = T2.dot(R).dot(T1)
+        
+        x0n, y0n = aplicar_transformacion((x0, y0), M)
+        x1n, y1n = aplicar_transformacion((x1, y1), M)
+        
+        estado['lineas_almacenadas'][indice] = (x0n, y0n, x1n, y1n, color, grosor)
+    
+    elif tipo == 'curva':
+        puntos_control, color, grosor = estado['curvas_almacenadas'][indice]
+        centro_x = sum(p[0] for p in puntos_control) / len(puntos_control)
+        centro_y = sum(p[1] for p in puntos_control) / len(puntos_control)
+        
+        T1 = crear_matriz_traslacion(-centro_x, -centro_y)
+        R = crear_matriz_rotacion(angulo)
+        T2 = crear_matriz_traslacion(centro_x, centro_y)
+        M = T2.dot(R).dot(T1)
+        
+        nuevos_puntos = [aplicar_transformacion(p, M) for p in puntos_control]
+        estado['curvas_almacenadas'][indice] = (nuevos_puntos, color, grosor)
+    
     return estado
 
-# Borrar en una posición (x, y)
-# Esta función borra un área cuadrada centrada en (x, y) del tamaño
-def borrar_en(estado, x, y):
-    mitad = estado['tamanho_borrador'] // 2
+def escalar_figura(estado, factor):
+    if not estado['figura_seleccionada']:
+        return estado
+    
+    tipo, indice = estado['figura_seleccionada']
+    estado['factor_escala'] *= factor
+    
+    if tipo == 'circulo':
+        cx, cy, radio, color, grosor = estado['circulos_almacenados'][indice]
+        estado['circulos_almacenados'][indice] = (cx, cy, radio * factor, color, grosor)
+    
+    elif tipo == 'rectangulo':
+        x0, y0, x1, y1, color, grosor = estado['rectangulos_almacenados'][indice]
+        centro_x = (x0 + x1) / 2
+        centro_y = (y0 + y1) / 2
+        
+        T1 = crear_matriz_traslacion(-centro_x, -centro_y)
+        S = crear_matriz_escala(factor, factor)
+        T2 = crear_matriz_traslacion(centro_x, centro_y)
+        M = T2.dot(S).dot(T1)
+        
+        x0n, y0n = aplicar_transformacion((x0, y0), M)
+        x1n, y1n = aplicar_transformacion((x1, y1), M)
+        
+        estado['rectangulos_almacenados'][indice] = (x0n, y0n, x1n, y1n, color, grosor)
+    
+    elif tipo == 'linea':
+        x0, y0, x1, y1, color, grosor = estado['lineas_almacenadas'][indice]
+        centro_x = (x0 + x1) / 2
+        centro_y = (y0 + y1) / 2
+        
+        T1 = crear_matriz_traslacion(-centro_x, -centro_y)
+        S = crear_matriz_escala(factor, factor)
+        T2 = crear_matriz_traslacion(centro_x, centro_y)
+        M = T2.dot(S).dot(T1)
+        
+        x0n, y0n = aplicar_transformacion((x0, y0), M)
+        x1n, y1n = aplicar_transformacion((x1, y1), M)
+        
+        estado['lineas_almacenadas'][indice] = (x0n, y0n, x1n, y1n, color, grosor)
+    
+    elif tipo == 'curva':
+        puntos_control, color, grosor = estado['curvas_almacenadas'][indice]
+        centro_x = sum(p[0] for p in puntos_control) / len(puntos_control)
+        centro_y = sum(p[1] for p in puntos_control) / len(puntos_control)
+        
+        T1 = crear_matriz_traslacion(-centro_x, -centro_y)
+        S = crear_matriz_escala(factor, factor)
+        T2 = crear_matriz_traslacion(centro_x, centro_y)
+        M = T2.dot(S).dot(T1)
+        
+        nuevos_puntos = [aplicar_transformacion(p, M) for p in puntos_control]
+        estado['curvas_almacenadas'][indice] = (nuevos_puntos, color, grosor)
+    
+    return estado
+
+def aplicar_recorte(estado):
+    if not estado['area_recorte']:
+        return estado
+    
+    x0, y0, x1, y1 = estado['area_recorte']
+    
     estado['pixeles_almacenados'] = [
-        (px, py, color, tamanho) for (px, py, color, tamanho) in estado['pixeles_almacenados']
-        if not (x - mitad <= px <= x + mitad and y - mitad <= py <= y + mitad)
+        (x, y, color, tamanho) for (x, y, color, tamanho) in estado['pixeles_almacenados']
+        if x0 <= x <= x1 and y0 <= y <= y1
     ]
+    
     estado['lineas_almacenadas'] = [
-        linea for linea in estado['lineas_almacenadas']
-        if not ((x - mitad <= linea[0] <= x + mitad and y - mitad <= linea[1] <= y + mitad) or
-                (x - mitad <= linea[2] <= x + mitad and y - mitad <= linea[3] <= y + mitad))
+        (nx0, ny0, nx1, ny1, color, grosor) 
+        for (x0_l, y0_l, x1_l, y1_l, color, grosor) in estado['lineas_almacenadas']
+        if (resultado := recortar_linea_cohen_sutherland(x0_l, y0_l, x1_l, y1_l, estado['area_recorte']))
+        for (nx0, ny0, nx1, ny1) in [resultado]
     ]
+    
     estado['circulos_almacenados'] = [
-        circulo for circulo in estado['circulos_almacenados']
-        if not (x - mitad <= circulo[0] <= x + mitad and y - mitad <= circulo[1] <= y + mitad)
+        (cx, cy, radio, color, grosor) 
+        for (cx, cy, radio, color, grosor) in estado['circulos_almacenados']
+        if (x0 <= cx - radio and cx + radio <= x1 and 
+            y0 <= cy - radio and cy + radio <= y1)
     ]
-    estado['curvas_almacenadas'] = [
-        curva for curva in estado['curvas_almacenadas']
-        if not any(x - mitad <= px <= x + mitad and y - mitad <= py <= y + mitad for (px, py) in curva[0])
-    ]
+    
     estado['rectangulos_almacenados'] = [
-        rect for rect in estado['rectangulos_almacenados']
-        if not ((x - mitad <= rect[0] <= x + mitad and y - mitad <= rect[1] <= y + mitad) or
-                (x - mitad <= rect[2] <= x + mitad and y - mitad <= rect[3] <= y + mitad))
+        (max(x0_r, x0), max(y0_r, y0), min(x1_r, x1), min(y1_r, y1), color, grosor)
+        for (x0_r, y0_r, x1_r, y1_r, color, grosor) in estado['rectangulos_almacenados']
+        if not (x1_r < x0 or x0_r > x1 or y1_r < y0 or y0_r > y1)
     ]
+    
+    estado['curvas_almacenadas'] = [
+        (pts, color, grosor) 
+        for (pts, color, grosor) in estado['curvas_almacenadas']
+        if all(x0 <= px <= x1 and y0 <= py <= y1 for (px, py) in pts)
+    ]
+    
+    estado['area_recorte'] = None
     return estado
 
-# Dibujar una línea usando el algoritmo de Bresenham
-def dibujar_linea_bresenham(estado, x0, y0, x1, y1, almacenar=True):
-    if almacenar:
-        estado['lineas_almacenadas'].append((x0, y0, x1, y1, estado['color_actual'], estado['grosor_linea']))
-    
-    dx = abs(x1 - x0)
-    dy = abs(y1 - y0)
-    empinada = dy > dx
-    if empinada:
-        x0, y0 = y0, x0
-        x1, y1 = y1, x1
-    if x0 > x1:
-        x0, x1 = x1, x0
-        y0, y1 = y1, y0
-    
-    dx = abs(x1 - x0)
-    dy = abs(y1 - y0)
-    error = dx // 2
-    paso_y = 1 if y0 < y1 else -1
-    y = y0
-    
-    glColor3f(*estado['color_actual'])
-    glLineWidth(estado['grosor_linea'])
-    glBegin(GL_POINTS)
-    for x in range(int(x0), int(x1) + 1):
-        coord = (y, x) if empinada else (x, y)
-        glVertex2f(coord[0], coord[1])
-        error -= dy
-        if error < 0:
-            y += paso_y
-            error += dx
-    glEnd()
-    glLineWidth(1)
-    return estado
-
-# Dibujar una curva Bezier cuadrática
-# Esta función dibuja una curva Bezier cuadrática usando tres puntos de control
-def dibujar_curva_bezier(estado, puntos_control, segmentos=100, almacenar=True):
-    if almacenar:
-        estado['curvas_almacenadas'].append((puntos_control.copy(), estado['color_actual'], estado['grosor_linea']))
-    
-    glColor3f(*estado['color_actual'])
-    glLineWidth(estado['grosor_linea'])
-    glBegin(GL_LINE_STRIP)
-    for i in range(segmentos + 1):
-        t = i / segmentos
-        x = (1 - t) ** 2 * puntos_control[0][0] + 2 * (1 - t) * t * puntos_control[1][0] + t ** 2 * puntos_control[2][0]
-        y = (1 - t) ** 2 * puntos_control[0][1] + 2 * (1 - t) * t * puntos_control[1][1] + t ** 2 * puntos_control[2][1]
-        glVertex2f(x, y)
-    glEnd()
-    glLineWidth(1)
-    return estado
-
-# Dibujar un círculo
-# Esta función dibuja un círculo centrado en (cx, cy) con un radio dado
-def dibujar_circulo(estado, cx, cy, radio, segmentos=100, almacenar=True):
-    if almacenar:
-        estado['circulos_almacenados'].append((cx, cy, radio, estado['color_actual'], estado['grosor_linea']))
-    
-    glColor3f(*estado['color_actual'])
-    glLineWidth(estado['grosor_linea'])
-    glBegin(GL_LINE_LOOP)
-    for i in range(segmentos):
-        angulo = 2 * math.pi * i / segmentos
-        x = cx + radio * math.cos(angulo)
-        y = cy + radio * math.sin(angulo)
-        glVertex2f(x, y)
-    glEnd()
-    glLineWidth(1)
-    return estado
-
-# Dibujar un rectángulo
-# Esta función dibuja un rectángulo definido por dos esquinas opuestas (x0, y0) y (x1, y1)
-def dibujar_rectangulo(estado, x0, y0, x1, y1, almacenar=True):
-    if almacenar:
-        estado['rectangulos_almacenados'].append((x0, y0, x1, y1, estado['color_actual'], estado['grosor_linea']))
-    
-    glColor3f(*estado['color_actual'])
-    glLineWidth(estado['grosor_linea'])
-    glBegin(GL_LINE_LOOP)
-    glVertex2f(x0, y0)
-    glVertex2f(x1, y0)
-    glVertex2f(x1, y1)
-    glVertex2f(x0, y1)
-    glEnd()
-    glLineWidth(1)
-    return estado
-
-# Dibujar una cuadrícula
-# Esta función dibuja una cuadrícula en el fondo de la ventana
-def dibujar_cuadricula(estado):
-    if not estado['mostrar_cuadricula']:
-        return
-    
-    glColor3f(0.9, 0.9, 0.9)
-    glLineWidth(1)
-    glBegin(GL_LINES)
-    
-    for x in range(0, estado['ancho'], estado['tamanho_cuadricula']):
-        glVertex2f(x, 40)
-        glVertex2f(x, estado['alto'])
-    
-    for y in range(40, estado['alto'], estado['tamanho_cuadricula']):
-        glVertex2f(0, y)
-        glVertex2f(estado['ancho'], y)
-    
-    glEnd()
-
-# Dibujar iconos de herramientas
-# Esta función dibuja los iconos de las herramientas en la barra de herramientas
 def dibujar_icono(herramienta, x):
     if herramienta == "lapiz":
         glColor3f(0, 0, 0)
@@ -326,9 +560,17 @@ def dibujar_icono(herramienta, x):
         glVertex2f(x + 13, 18); glVertex2f(x + 15, 20)
         glVertex2f(x + 17, 18); glVertex2f(x + 15, 20)
         glEnd()
+    elif herramienta == SELECCIONAR:
+        glColor3f(0.7, 0.7, 0.9)
+        glRecti(x + 5, 5, x + 25, 35)
+        glColor3f(0, 0, 0)
+        glLineWidth(2)
+        glBegin(GL_LINES)
+        glVertex2f(x + 8, 25); glVertex2f(x + 15, 15)
+        glVertex2f(x + 15, 15); glVertex2f(x + 22, 25)
+        glVertex2f(x + 15, 15); glVertex2f(x + 15, 30)
+        glEnd()
 
-# Dibujar la barra de herramientas
-# Esta función dibuja la barra de herramientas en la parte superior de la ventana
 def dibujar_barra_herramientas(estado):
     glColor3f(0.9, 0.9, 0.9)
     glBegin(GL_QUADS)
@@ -345,7 +587,7 @@ def dibujar_barra_herramientas(estado):
     glVertex2f(estado['ancho'], 40)
     glEnd()
     
-    herramientas = ["lapiz", "linea", "circulo", "curva", "borrador", "rectangulo", "recortar"]
+    herramientas = ["lapiz", "linea", "circulo", "curva", "borrador", "rectangulo", "recortar", SELECCIONAR]
     for i, herramienta in enumerate(herramientas):
         x = 10 + i * 40
         if herramienta == estado['herramienta_actual']:
@@ -380,82 +622,67 @@ def dibujar_barra_herramientas(estado):
                     GL_RGBA, GL_UNSIGNED_BYTE, datos_textura)
         glRasterPos2f(glGetDoublev(GL_CURRENT_RASTER_POSITION)[0] + superficie_texto.get_width(), 25)
 
-# Aplicar recorte a los elementos almacenados
-# Esta función recorta los elementos almacenados según el área de recorte definida
-def aplicar_recorte(estado):
-    if not estado['area_recorte']:
-        return estado
-    
-    x0, y0, x1, y1 = estado['area_recorte']
-    
-    # Filtrar elementos fuera del área de recorte
-    estado['pixeles_almacenados'] = [
-        (x, y, color, tamanho) for (x, y, color, tamanho) in estado['pixeles_almacenados']
-        if x0 <= x <= x1 and y0 <= y <= y1
-    ]
-    
-    estado['lineas_almacenadas'] = [
-        (nx0, ny0, nx1, ny1, color, grosor) 
-        for (x0_l, y0_l, x1_l, y1_l, color, grosor) in estado['lineas_almacenadas']
-        if (resultado := recortar_linea_cohen_sutherland(x0_l, y0_l, x1_l, y1_l, estado['area_recorte']))
-        for (nx0, ny0, nx1, ny1) in [resultado]
-    ]
-    
-    estado['circulos_almacenados'] = [
-        (cx, cy, radio, color, grosor) 
-        for (cx, cy, radio, color, grosor) in estado['circulos_almacenados']
-        if (x0 <= cx - radio and cx + radio <= x1 and 
-            y0 <= cy - radio and cy + radio <= y1)
-    ]
-    
-    estado['rectangulos_almacenados'] = [
-        (max(x0_r, x0), max(y0_r, y0), min(x1_r, x1), min(y1_r, y1), color, grosor)
-        for (x0_r, y0_r, x1_r, y1_r, color, grosor) in estado['rectangulos_almacenados']
-        if not (x1_r < x0 or x0_r > x1 or y1_r < y0 or y0_r > y1)
-    ]
-    
-    estado['curvas_almacenadas'] = [
-        (pts, color, grosor) 
-        for (pts, color, grosor) in estado['curvas_almacenadas']
-        if all(x0 <= px <= x1 and y0 <= py <= y1 for (px, py) in pts)
-    ]
-    
-    estado['area_recorte'] = None
-    return estado
+    if estado['figura_seleccionada']:
+        glColor3f(0.2, 0.2, 0.2)
+        glRasterPos2f(470, 10)
+        texto = "R: Rotar | S: Escalar | Shift: Invertir"
+        for char in texto:
+            fuente = pygame.font.SysFont('Arial', 12)
+            superficie_texto = fuente.render(char, True, (50, 50, 50))
+            datos_textura = pygame.image.tostring(superficie_texto, "RGBA", True)
+            glDrawPixels(superficie_texto.get_width(), superficie_texto.get_height(), 
+                        GL_RGBA, GL_UNSIGNED_BYTE, datos_textura)
+            glRasterPos2f(glGetDoublev(GL_CURRENT_RASTER_POSITION)[0] + superficie_texto.get_width(), 10)
 
-# Redibujar todo el contenido de la ventana
-# Esta función redibuja todos los elementos almacenados y la cuadrícula
 def redibujar_todo(estado):
     glClearColor(1, 1, 1, 1)
     glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT)
     
     dibujar_cuadricula(estado)
     
-    # Dibujar elementos almacenados
     for x, y, color, tamanho in estado['pixeles_almacenados']:
         dibujar_pixel(estado, x, y, almacenar=False, color=color, tamanho=tamanho)
     
-    for x0, y0, x1, y1, color, grosor in estado['lineas_almacenadas']:
+    for i, (x0, y0, x1, y1, color, grosor) in enumerate(estado['lineas_almacenadas']):
         glColor3f(*color)
         glLineWidth(grosor)
         dibujar_linea_bresenham(estado, x0, y0, x1, y1, almacenar=False)
+        
+        if estado['figura_seleccionada'] and estado['figura_seleccionada'][0] == 'linea' and estado['figura_seleccionada'][1] == i:
+            glColor3f(0, 1, 1)
+            glLineWidth(grosor + 2)
+            dibujar_linea_bresenham(estado, x0, y0, x1, y1, almacenar=False)
     
-    for pts, color, grosor in estado['curvas_almacenadas']:
+    for i, (pts, color, grosor) in enumerate(estado['curvas_almacenadas']):
         glColor3f(*color)
-        glLineWidth(grosor)
+        glPointSize(grosor)
         dibujar_curva_bezier(estado, pts, almacenar=False)
+        
+        if estado['figura_seleccionada'] and estado['figura_seleccionada'][0] == 'curva' and estado['figura_seleccionada'][1] == i:
+            glColor3f(0, 1, 1)
+            glPointSize(grosor + 2)
+            dibujar_curva_bezier(estado, pts, almacenar=False)
     
-    for cx, cy, radio, color, grosor in estado['circulos_almacenados']:
+    for i, (cx, cy, radio, color, grosor) in enumerate(estado['circulos_almacenados']):
         glColor3f(*color)
-        glLineWidth(grosor)
+        glPointSize(grosor)
         dibujar_circulo(estado, cx, cy, radio, almacenar=False)
+        
+        if estado['figura_seleccionada'] and estado['figura_seleccionada'][0] == 'circulo' and estado['figura_seleccionada'][1] == i:
+            glColor3f(0, 1, 1)
+            glPointSize(grosor + 2)
+            dibujar_circulo(estado, cx, cy, radio, almacenar=False)
     
-    for x0, y0, x1, y1, color, grosor in estado['rectangulos_almacenados']:
+    for i, (x0, y0, x1, y1, color, grosor) in enumerate(estado['rectangulos_almacenados']):
         glColor3f(*color)
         glLineWidth(grosor)
         dibujar_rectangulo(estado, x0, y0, x1, y1, almacenar=False)
+        
+        if estado['figura_seleccionada'] and estado['figura_seleccionada'][0] == 'rectangulo' and estado['figura_seleccionada'][1] == i:
+            glColor3f(0, 1, 1)
+            glLineWidth(grosor + 2)
+            dibujar_rectangulo(estado, x0, y0, x1, y1, almacenar=False)
     
-    # Dibujar área de recorte si existe
     if estado['area_recorte']:
         x0, y0, x1, y1 = estado['area_recorte']
         glColor3f(0.5, 0.5, 0.8)
@@ -482,7 +709,6 @@ def redibujar_todo(estado):
         glEnd()
         glDisable(GL_BLEND)
     
-    # Dibujar rectángulo de recorte temporal
     if estado['area_recorte_temporal'] and len(estado['area_recorte_temporal']) == 1:
         x0, y0 = estado['area_recorte_temporal'][0]
         x1, y1 = pygame.mouse.get_pos()
@@ -499,8 +725,6 @@ def redibujar_todo(estado):
     pygame.display.flip()
     return estado
 
-# Función principal del programa
-# Esta función inicializa Pygame, configura el estado inicial y maneja el bucle
 def main():
     estado = inicializar_pygame()
     estado = redibujar_todo(estado)
@@ -544,14 +768,34 @@ def main():
                             estado['puntos_control'].clear()
                     elif estado['herramienta_actual'] == "recortar":
                         estado['area_recorte_temporal'] = [(x, y)]
+                    elif estado['herramienta_actual'] == SELECCIONAR:
+                        estado['figura_seleccionada'] = seleccionar_figura(estado, x, y)
+                        if estado['figura_seleccionada']:
+                            tipo, indice = estado['figura_seleccionada']
+                            if tipo == 'circulo':
+                                cx, cy, radio, color, grosor = estado['circulos_almacenados'][indice]
+                                estado['centro_transformacion'] = (cx, cy)
+                            elif tipo == 'rectangulo':
+                                x0, y0, x1, y1, color, grosor = estado['rectangulos_almacenados'][indice]
+                                estado['centro_transformacion'] = ((x0 + x1)/2, (y0 + y1)/2)
+                            elif tipo == 'linea':
+                                x0, y0, x1, y1, color, grosor = estado['lineas_almacenadas'][indice]
+                                estado['centro_transformacion'] = ((x0 + x1)/2, (y0 + y1)/2)
+                            elif tipo == 'curva':
+                                puntos_control, color, grosor = estado['curvas_almacenadas'][indice]
+                                centro_x = sum(p[0] for p in puntos_control) / len(puntos_control)
+                                centro_y = sum(p[1] for p in puntos_control) / len(puntos_control)
+                                estado['centro_transformacion'] = (centro_x, centro_y)
                     estado = redibujar_todo(estado)
                 else:
-                    herramientas = ["lapiz", "linea", "circulo", "curva", "borrador", "rectangulo", "recortar"]
+                    herramientas = ["lapiz", "linea", "circulo", "curva", "borrador", "rectangulo", "recortar", SELECCIONAR]
                     for i, herramienta in enumerate(herramientas):
                         if 10 + i * 40 <= x <= 40 + i * 40:
                             estado['herramienta_actual'] = herramienta
                             if herramienta != "recortar":
                                 estado['area_recorte'] = None
+                            if herramienta != SELECCIONAR:
+                                estado['figura_seleccionada'] = None
                     
                     colores = [(255, 0, 0), (0, 255, 0), (0, 0, 255), (0, 0, 0), (255, 255, 255)]
                     for i, (r, g, b) in enumerate(colores):
@@ -595,10 +839,28 @@ def main():
                 elif evento.key == pygame.K_ESCAPE:
                     estado['area_recorte'] = None
                     estado['area_recorte_temporal'] = None
+                    estado['figura_seleccionada'] = None
                     estado = redibujar_todo(estado)
                 elif evento.key == pygame.K_c and estado['herramienta_actual'] == "recortar" and estado['area_recorte']:
                     estado = aplicar_recorte(estado)
                     estado = redibujar_todo(estado)
+                elif evento.key == pygame.K_f:
+                    estado['herramienta_actual'] = SELECCIONAR
+                    estado = redibujar_todo(estado)
+                elif evento.key == pygame.K_r:
+                    if estado['figura_seleccionada']:
+                        angulo = 15
+                        if pygame.key.get_mods() & pygame.KMOD_SHIFT:
+                            angulo = -15
+                        estado = rotar_figura(estado, angulo)
+                        estado = redibujar_todo(estado)
+                elif evento.key == pygame.K_s:
+                    if estado['figura_seleccionada']:
+                        factor = 1.1
+                        if pygame.key.get_mods() & pygame.KMOD_SHIFT:
+                            factor = 0.9
+                        estado = escalar_figura(estado, factor)
+                        estado = redibujar_todo(estado)
         
         if estado['herramienta_actual'] == "recortar" and estado['area_recorte_temporal'] and len(estado['area_recorte_temporal']) == 1:
             estado = redibujar_todo(estado)
