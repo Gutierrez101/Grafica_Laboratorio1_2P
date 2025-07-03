@@ -124,7 +124,7 @@ def dibujar_pixel(estado, x, y, almacenar=True, color=None, tamanho=None):
 def borrar_en(estado, x, y):
     mitad = estado['tamanho_borrador'] // 2
     estado['pixeles_almacenados'] = [
-        (px, py, color, tamanho) for (px, py, color, tamanho) in estado['pixeles_almacenados']
+        (px, py, color, tamaño) for (px, py, color, tamaño) in estado['pixeles_almacenados']
         if not (x - mitad <= px <= x + mitad and y - mitad <= py <= y + mitad)
     ]
     estado['lineas_almacenadas'] = [
@@ -181,21 +181,6 @@ def dibujar_linea_bresenham(estado, x0, y0, x1, y1, almacenar=True):
     glPointSize(1)
     return estado
 
-def dibujar_curva_bezier(estado, puntos_control, segmentos=100, almacenar=True):
-    if almacenar:
-        estado['curvas_almacenadas'].append((puntos_control.copy(), estado['color_actual'], estado['grosor_linea']))
-    
-    glColor3f(*estado['color_actual'])
-    glPointSize(estado['grosor_linea'])
-    glBegin(GL_POINTS)
-    for i in range(segmentos + 1):
-        t = i / segmentos
-        x = (1 - t) ** 2 * puntos_control[0][0] + 2 * (1 - t) * t * puntos_control[1][0] + t ** 2 * puntos_control[2][0]
-        y = (1 - t) ** 2 * puntos_control[0][1] + 2 * (1 - t) * t * puntos_control[1][1] + t ** 2 * puntos_control[2][1]
-        glVertex2f(x, y)
-    glEnd()
-    glPointSize(1)
-    return estado
 
 def dibujar_circulo(estado, cx, cy, radio, segmentos=100, almacenar=True):
     if almacenar:
@@ -454,40 +439,64 @@ def escalar_figura(estado, factor):
 def aplicar_recorte(estado):
     if not estado['area_recorte']:
         return estado
-    
     x0, y0, x1, y1 = estado['area_recorte']
-    
+
     estado['pixeles_almacenados'] = [
         (x, y, color, tamanho) for (x, y, color, tamanho) in estado['pixeles_almacenados']
         if x0 <= x <= x1 and y0 <= y <= y1
     ]
-    
+
     estado['lineas_almacenadas'] = [
-        (nx0, ny0, nx1, ny1, color, grosor) 
+        (nx0, ny0, nx1, ny1, color, grosor)
         for (x0_l, y0_l, x1_l, y1_l, color, grosor) in estado['lineas_almacenadas']
         if (resultado := recortar_linea_cohen_sutherland(x0_l, y0_l, x1_l, y1_l, estado['area_recorte']))
         for (nx0, ny0, nx1, ny1) in [resultado]
     ]
-    
-    estado['circulos_almacenados'] = [
-        (cx, cy, radio, color, grosor) 
-        for (cx, cy, radio, color, grosor) in estado['circulos_almacenados']
-        if (x0 <= cx - radio and cx + radio <= x1 and 
-            y0 <= cy - radio and cy + radio <= y1)
-    ]
-    
-    estado['rectangulos_almacenados'] = [
-        (max(x0_r, x0), max(y0_r, y0), min(x1_r, x1), min(y1_r, y1), color, grosor)
-        for (x0_r, y0_r, x1_r, y1_r, color, grosor) in estado['rectangulos_almacenados']
-        if not (x1_r < x0 or x0_r > x1 or y1_r < y0 or y0_r > y1)
-    ]
-    
-    estado['curvas_almacenadas'] = [
-        (pts, color, grosor) 
-        for (pts, color, grosor) in estado['curvas_almacenadas']
-        if all(x0 <= px <= x1 and y0 <= py <= y1 for (px, py) in pts)
-    ]
-    
+
+    # Recorte destructivo para curvas (filtra puntos de la curva)
+    nuevas_curvas = []
+    for puntos_control, color, grosor in estado['curvas_almacenadas']:
+        curva = calcular_b_spline(puntos_control)
+        curva_recortada = [
+            (x, y) for (x, y) in curva
+            if x0 <= x <= x1 and y0 <= y <= y1
+        ]
+        if curva_recortada:
+            # Guarda los puntos recortados como una curva "plana"
+            nuevas_curvas.append((curva_recortada, color, grosor))
+    estado['curvas_almacenadas'] = nuevas_curvas
+
+    # Recorte destructivo para círculos (filtra puntos del círculo)
+    nuevas_circulos = []
+    for cx, cy, radio, color, grosor in estado['circulos_almacenados']:
+        puntos = []
+        for i in range(100):
+            angulo = 2 * math.pi * i / 100
+            x = cx + radio * math.cos(angulo)
+            y = cy + radio * math.sin(angulo)
+            if x0 <= x <= x1 and y0 <= y <= y1:
+                puntos.append((x, y))
+        if puntos:
+            # Guarda los puntos recortados como una "curva" (igual que curva)
+            nuevas_circulos.append((puntos, color, grosor))
+    estado['circulos_almacenados'] = nuevas_circulos
+
+    # Recorte destructivo para rectángulos (cada lado como línea)
+    nuevas_rectangulos = []
+    for x0_r, y0_r, x1_r, y1_r, color, grosor in estado['rectangulos_almacenados']:
+        lados = [
+            (x0_r, y0_r, x1_r, y0_r),  # arriba
+            (x1_r, y0_r, x1_r, y1_r),  # derecha
+            (x1_r, y1_r, x0_r, y1_r),  # abajo
+            (x0_r, y1_r, x0_r, y0_r),  # izquierda
+        ]
+        for lx0, ly0, lx1, ly1 in lados:
+            rec = recortar_linea_cohen_sutherland(lx0, ly0, lx1, ly1, estado['area_recorte'])
+            if rec:
+                nuevas_rectangulos.append((*rec, color, grosor))
+    estado['rectangulos_almacenados'] = []
+    estado['lineas_almacenadas'].extend(nuevas_rectangulos)
+
     estado['area_recorte'] = None
     return estado
 
@@ -656,33 +665,52 @@ def redibujar_todo(estado):
     for i, (pts, color, grosor) in enumerate(estado['curvas_almacenadas']):
         glColor3f(*color)
         glPointSize(grosor)
-        dibujar_curva_bezier(estado, pts, almacenar=False)
-        
-        if estado['figura_seleccionada'] and estado['figura_seleccionada'][0] == 'curva' and estado['figura_seleccionada'][1] == i:
-            glColor3f(0, 1, 1)
-            glPointSize(grosor + 2)
-            dibujar_curva_bezier(estado, pts, almacenar=False)
-    
+        glBegin(GL_POINTS)
+        curva = calcular_b_spline(pts)
+        for x, y in curva:
+            if not estado['area_recorte'] or (
+                estado['area_recorte'][0] <= x <= estado['area_recorte'][2] and
+                estado['area_recorte'][1] <= y <= estado['area_recorte'][3]
+            ):
+                glVertex2f(x, y)
+        glEnd()
+    glPointSize(1)
+
     for i, (cx, cy, radio, color, grosor) in enumerate(estado['circulos_almacenados']):
         glColor3f(*color)
         glPointSize(grosor)
-        dibujar_circulo(estado, cx, cy, radio, almacenar=False)
-        
-        if estado['figura_seleccionada'] and estado['figura_seleccionada'][0] == 'circulo' and estado['figura_seleccionada'][1] == i:
-            glColor3f(0, 1, 1)
-            glPointSize(grosor + 2)
-            dibujar_circulo(estado, cx, cy, radio, almacenar=False)
+        glBegin(GL_POINTS)
+        for j in range(100):
+            angulo = 2 * math.pi * j / 100
+            x = cx + radio * math.cos(angulo)
+            y = cy + radio * math.sin(angulo)
+            if not estado['area_recorte'] or (
+                estado['area_recorte'][0] <= x <= estado['area_recorte'][2] and
+                estado['area_recorte'][1] <= y <= estado['area_recorte'][3]
+            ):
+                glVertex2f(x, y)
+        glEnd()
+    glPointSize(1)
+    # Selección visual igual que arriba si quieres
     
     for i, (x0, y0, x1, y1, color, grosor) in enumerate(estado['rectangulos_almacenados']):
+        lados = [
+            (x0, y0, x1, y0),  # arriba
+            (x1, y0, x1, y1),  # derecha
+            (x1, y1, x0, y1),  # abajo
+            (x0, y1, x0, y0),  # izquierda
+        ]
         glColor3f(*color)
         glLineWidth(grosor)
-        dibujar_rectangulo(estado, x0, y0, x1, y1, almacenar=False)
-        
-        if estado['figura_seleccionada'] and estado['figura_seleccionada'][0] == 'rectangulo' and estado['figura_seleccionada'][1] == i:
-            glColor3f(0, 1, 1)
-            glLineWidth(grosor + 2)
-            dibujar_rectangulo(estado, x0, y0, x1, y1, almacenar=False)
-    
+        for lx0, ly0, lx1, ly1 in lados:
+            if estado['area_recorte']:
+                rec = recortar_linea_cohen_sutherland(lx0, ly0, lx1, ly1, estado['area_recorte'])
+                if rec:
+                    dibujar_linea_bresenham(estado, *rec, almacenar=False)
+            else:
+                dibujar_linea_bresenham(estado, lx0, ly0, lx1, ly1, almacenar=False)
+    glLineWidth(1)
+
     if estado['area_recorte']:
         x0, y0, x1, y1 = estado['area_recorte']
         glColor3f(0.5, 0.5, 0.8)
@@ -725,6 +753,53 @@ def redibujar_todo(estado):
     pygame.display.flip()
     return estado
 
+def calcular_catmull_rom(puntos_control, segmentos=100):
+    # Si solo hay 3 puntos, repetimos el primero y el último para tener 4
+    if len(puntos_control) == 3:
+        p0, p1, p2 = puntos_control
+        p3 = p2
+        p_0 = p0
+    elif len(puntos_control) == 4:
+        p_0, p0, p1, p2 = puntos_control
+        p3 = p2
+    else:
+        return []
+    curva = []
+    for i in range(segmentos + 1):
+        t = i / segmentos
+        # Catmull-Rom para 4 puntos
+        x = 0.5 * (
+            (2 * p0[0]) +
+            (-p_0[0] + p1[0]) * t +
+            (2*p_0[0] - 5*p0[0] + 4*p1[0] - p2[0]) * t**2 +
+            (-p_0[0] + 3*p0[0] - 3*p1[0] + p2[0]) * t**3
+        )
+        y = 0.5 * (
+            (2 * p0[1]) +
+            (-p_0[1] + p1[1]) * t +
+            (2*p_0[1] - 5*p0[1] + 4*p1[1] - p2[1]) * t**2 +
+            (-p_0[1] + 3*p0[1] - 3*p1[1] + p2[1]) * t**3
+        )
+        curva.append((x, y))
+    return curva
+
+def calcular_b_spline(puntos_control, segmentos=100):
+    # B-Spline cuadrática para 3 puntos de control
+    if len(puntos_control) != 3:
+        return []
+    p0, p1, p2 = puntos_control
+    curva = []
+    for i in range(segmentos + 1):
+        t = i / segmentos
+        # Fórmulas de B-Spline cuadrática
+        b0 = (1 - t) ** 2 / 2
+        b1 = (-2 * t ** 2 + 2 * t + 1) / 2
+        b2 = t ** 2 / 2
+        x = b0 * p0[0] + b1 * p1[0] + b2 * p2[0]
+        y = b0 * p0[1] + b1 * p1[1] + b2 * p2[1]
+        curva.append((x, y))
+    return curva
+
 def main():
     estado = inicializar_pygame()
     estado = redibujar_todo(estado)
@@ -764,7 +839,7 @@ def main():
                     elif estado['herramienta_actual'] == "curva":
                         estado['puntos_control'].append((x, y))
                         if len(estado['puntos_control']) == 3:
-                            estado = dibujar_curva_bezier(estado, estado['puntos_control'])
+                            estado['curvas_almacenadas'].append((estado['puntos_control'].copy(), estado['color_actual'], estado['grosor_linea']))
                             estado['puntos_control'].clear()
                     elif estado['herramienta_actual'] == "recortar":
                         estado['area_recorte_temporal'] = [(x, y)]
