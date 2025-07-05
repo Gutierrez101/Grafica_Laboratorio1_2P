@@ -633,11 +633,11 @@ def dibujar_barra_herramientas(estado):
     glRecti(x3d, 5, x3d + 30, 35)
     dibujar_icono("ventana3d", x3d)
 
-    # Botón 2D (esquina superior derecha)
+    # Botón 2D (esquina superior derecha en la ventana 3D)
     glMatrixMode(GL_PROJECTION)
     glPushMatrix()
     glLoadIdentity()
-    glOrtho(0, estado['ancho'], estado['alto'], 0, -1, 1)
+    glOrtho(0, estado['ancho'], 0, estado['alto'], -1, 1)
     glMatrixMode(GL_MODELVIEW)
     glPushMatrix()
     glLoadIdentity()
@@ -865,7 +865,7 @@ def abrir_ventana_3d():
             elif evento.type == pygame.KEYDOWN:
                 if evento.key == pygame.K_ESCAPE:
                     ejecutando = False
-                elif evento.key == pygame.K_TAB:  # Presiona TAB para regresar a 2D
+                elif evento.key == pygame.K_2:  # Presiona TAB para regresar a 2D
                     ejecutando = False
                 elif evento.key == pygame.K_l:
                     modo = "linea"
@@ -1023,10 +1023,11 @@ def main():
                     if x3d <= x <= x3d + 30:
                         abrir_ventana_3d()
 
-                    # Botón 2D (esquina superior derecha)
+                    # Botón 2D (esquina superior derecha en la ventana 3D)
                     x2d = estado['ancho'] - 60
                     if x2d <= x <= x2d + 30:
-                        print("Ya estás en el plano 2D.")
+                        ejecutando = False
+                        continue
 
                     estado['puntos'].clear()
                     estado['puntos_control'].clear()
