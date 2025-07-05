@@ -1,13 +1,10 @@
 import pygame
-from pygame.locals import *
+from pygame.locals import *  # <-- Mueve esta línea aquí
 from OpenGL.GL import *
 from OpenGL.GLU import *
 import math
 import numpy as np
 from numpy.linalg import inv
-
-# Variable global para el rectángulo de recorte
-rect = None
 
 # Constantes
 DENTRO = 0
@@ -137,7 +134,7 @@ def borrar_en(estado, x, y):
     ]
     estado['circulos_almacenados'] = [
         circulo for circulo in estado['circulos_almacenados']
-        if not (x - mitad <= circulo[0] <= x + mitad and y - mitad <= circulo[1] <= y + mitad)
+        if not (x - mitad <= circulo[0][0] <= x + mitad and y - mitad <= circulo[0][1] <= y + mitad)
     ]
     estado['curvas_almacenadas'] = [
         curva for curva in estado['curvas_almacenadas']
@@ -440,28 +437,19 @@ def escalar_figura(estado, factor):
     return estado
 
 def aplicar_recorte(estado):
-    global rect
-    if not rect:
+    if not estado['area_recorte']:
         return estado
-    # Coordenadas originales del rectángulo (pueden llegar en cualquier orden)
-    x0, y0, x1, y1 = rect
-    # Normalizamos para que (x_min, y_min) sea la esquina inferior‑izquierda
-    x_min, x_max = (x0, x1) if x0 <= x1 else (x1, x0)
-    y_min, y_max = (y0, y1) if y0 <= y1 else (y1, y0)
-    rect = (x_min, y_min, x_max, y_max)
-    x_min, x_max = (x0, x1) if x0 <= x1 else (x1, x0)
-    y_min, y_max = (y0, y1) if y0 <= y1 else (y1, y0)
-    rect = (x_min, y_min, x_max, y_max)
+    x0, y0, x1, y1 = estado['area_recorte']
 
     estado['pixeles_almacenados'] = [
         (x, y, color, tamanho) for (x, y, color, tamanho) in estado['pixeles_almacenados']
-        if rect[0] <= x <= rect[2] and rect[1] <= y <= rect[3]
+        if x0 <= x <= x1 and y0 <= y <= y1
     ]
 
     estado['lineas_almacenadas'] = [
         (nx0, ny0, nx1, ny1, color, grosor)
         for (x0_l, y0_l, x1_l, y1_l, color, grosor) in estado['lineas_almacenadas']
-        if (resultado := recortar_linea_cohen_sutherland(x0_l, y0_l, x1_l, y1_l, rect))
+        if (resultado := recortar_linea_cohen_sutherland(x0_l, y0_l, x1_l, y1_l, estado['area_recorte']))
         for (nx0, ny0, nx1, ny1) in [resultado]
     ]
 
@@ -471,7 +459,7 @@ def aplicar_recorte(estado):
         curva = calcular_b_spline(puntos_control)
         curva_recortada = [
             (x, y) for (x, y) in curva
-            if rect[0] <= x <= rect[2] and rect[1] <= y <= rect[3]
+            if x0 <= x <= x1 and y0 <= y <= y1
         ]
         if curva_recortada:
             # Guarda los puntos recortados como una curva "plana"
@@ -479,21 +467,25 @@ def aplicar_recorte(estado):
     estado['curvas_almacenadas'] = nuevas_curvas
 
     # Recorte destructivo para círculos (filtra puntos del círculo)
-    nuevas_curvas = []
-    for cx, cy, radio, color, grosor in estado['circulos_almacenados']:
-        puntos = []
-        for i in range(360):
-            angulo = 2 * math.pi * i / 100
-            x = cx + radio * math.cos(angulo)
-            y = cy + radio * math.sin(angulo)
-            if rect[0] <= x <= rect[2] and rect[1] <= y <= rect[3]:
-                puntos.append((x, y))
-        if puntos:
-            # Guarda los puntos recortados como una curva equivalente
-            nuevas_curvas.append((puntos, color, grosor))
-    # Vacía la lista de círculos y añade los arcos a las curvas existentes
-    estado['circulos_almacenados'] = []
-    estado['curvas_almacenadas'].extend(nuevas_curvas)
+    nuevas_circulos = []
+    for datos in estado['circulos_almacenados']:
+        if len(datos) == 5:
+            cx, cy, radio, color, grosor = datos
+            puntos = []
+            for i in range(100):
+                angulo = 2 * math.pi * i / 100
+                x = cx + radio * math.cos(angulo)
+                y = cy + radio * math.sin(angulo)
+                if x0 <= x <= x1 and y0 <= y <= y1:
+                    puntos.append((x, y))
+            if puntos:
+                nuevas_circulos.append((puntos, color, grosor))
+        elif len(datos) == 3:
+            puntos, color, grosor = datos
+            puntos_recortados = [(x, y) for (x, y) in puntos if x0 <= x <= x1 and y0 <= y <= y1]
+            if puntos_recortados:
+                nuevas_circulos.append((puntos_recortados, color, grosor))
+    estado['circulos_almacenados'] = nuevas_circulos
 
     # Recorte destructivo para rectángulos (cada lado como línea)
     nuevas_rectangulos = []
@@ -505,13 +497,13 @@ def aplicar_recorte(estado):
             (x0_r, y1_r, x0_r, y0_r),  # izquierda
         ]
         for lx0, ly0, lx1, ly1 in lados:
-            rec = recortar_linea_cohen_sutherland(lx0, ly0, lx1, ly1, rect)
+            rec = recortar_linea_cohen_sutherland(lx0, ly0, lx1, ly1, estado['area_recorte'])
             if rec:
                 nuevas_rectangulos.append((*rec, color, grosor))
     estado['rectangulos_almacenados'] = []
     estado['lineas_almacenadas'].extend(nuevas_rectangulos)
 
-    rect = None
+    estado['area_recorte'] = None
     return estado
 
 def dibujar_icono(herramienta, x):
@@ -531,7 +523,7 @@ def dibujar_icono(herramienta, x):
         glColor3f(0, 0, 0)
         glLineWidth(2)
         glBegin(GL_LINE_LOOP)
-        for i in range(360):
+        for i in range(20):
             angulo = 2 * math.pi * i / 20
             glVertex2f(x + 15 + 10 * math.cos(angulo), 20 + 10 * math.sin(angulo))
         glEnd()
@@ -641,7 +633,7 @@ def dibujar_barra_herramientas(estado):
         glVertex2f(cx + 30, 35); glVertex2f(cx, 35)
         glEnd()
 
-    # Botón 3D
+    # Botón 3D mucho más a la derecha
     x3d = estado['ancho'] - 100
     glColor3f(0.8, 0.8, 0.8)
     glRecti(x3d, 5, x3d + 30, 35)
@@ -718,29 +710,43 @@ def redibujar_todo(estado):
         glBegin(GL_POINTS)
         curva = calcular_b_spline(pts)
         for x, y in curva:
-            if not rect or (
-                rect[0] <= x <= rect[2] and
-                rect[1] <= y <= rect[3]
+            if not estado['area_recorte'] or (
+                estado['area_recorte'][0] <= x <= estado['area_recorte'][2] and
+                estado['area_recorte'][1] <= y <= estado['area_recorte'][3]
             ):
                 glVertex2f(x, y)
         glEnd()
     glPointSize(1)
 
-    for i, (cx, cy, radio, color, grosor) in enumerate(estado['circulos_almacenados']):
-        glColor3f(*color)
-        glPointSize(grosor)
-        glBegin(GL_POINTS)
-        for j in range(100):
-            angulo = 2 * math.pi * j / 100
-            x = cx + radio * math.cos(angulo)
-            y = cy + radio * math.sin(angulo)
-            if not rect or (
-                rect[0] <= x <= rect[2] and
-                rect[1] <= y <= rect[3]
-            ):
+    for i, datos in enumerate(estado['circulos_almacenados']):
+        if len(datos) == 5:
+            # Círculo normal: (cx, cy, radio, color, grosor)
+            cx, cy, radio, color, grosor = datos
+            glColor3f(*color)
+            glPointSize(grosor)
+            glBegin(GL_POINTS)
+            for j in range(100):
+                angulo = 2 * math.pi * j / 100
+                x = cx + radio * math.cos(angulo)
+                y = cy + radio * math.sin(angulo)
+                if not estado['area_recorte'] or (
+                    estado['area_recorte'][0] <= x <= estado['area_recorte'][2] and
+                    estado['area_recorte'][1] <= y <= estado['area_recorte'][3]
+                ):
+                    glVertex2f(x, y)
+            glEnd()
+            glPointSize(1)
+        elif len(datos) == 3:
+            # Círculo recortado: (lista_puntos, color, grosor)
+            puntos, color, grosor = datos
+            glColor3f(*color)
+            glPointSize(grosor)
+            glBegin(GL_POINTS)
+            for x, y in puntos:
                 glVertex2f(x, y)
-        glEnd()
-    glPointSize(1)
+            glEnd()
+            glPointSize(1)
+
     # Selección visual igual que arriba si quieres
     
     for i, (x0, y0, x1, y1, color, grosor) in enumerate(estado['rectangulos_almacenados']):
@@ -753,16 +759,16 @@ def redibujar_todo(estado):
         glColor3f(*color)
         glLineWidth(grosor)
         for lx0, ly0, lx1, ly1 in lados:
-            if rect:
-                rec = recortar_linea_cohen_sutherland(lx0, ly0, lx1, ly1, rect)
+            if estado['area_recorte']:
+                rec = recortar_linea_cohen_sutherland(lx0, ly0, lx1, ly1, estado['area_recorte'])
                 if rec:
                     dibujar_linea_bresenham(estado, *rec, almacenar=False)
             else:
                 dibujar_linea_bresenham(estado, lx0, ly0, lx1, ly1, almacenar=False)
     glLineWidth(1)
 
-    if rect:
-        x0, y0, x1, y1 = rect
+    if estado['area_recorte']:
+        x0, y0, x1, y1 = estado['area_recorte']
         glColor3f(0.5, 0.5, 0.8)
         glLineWidth(2)
         glBegin(GL_LINE_LOOP)
@@ -975,7 +981,6 @@ def abrir_ventana_3d():
     pygame.quit()
 
 def main():
-    global rect
     estado = inicializar_pygame()
     estado = redibujar_todo(estado)
     ejecutando = True
@@ -1024,7 +1029,7 @@ def main():
                         if 10 + i * 40 <= x <= 40 + i * 40:
                             estado['herramienta_actual'] = herramienta
                             if herramienta != "recortar":
-                                rect = None
+                                estado['area_recorte'] = None
                             if herramienta != SELECCIONAR:
                                 estado['figura_seleccionada'] = None
 
@@ -1054,7 +1059,7 @@ def main():
                     estado['area_recorte_temporal'].append((x, y))
                     x0, y0 = estado['area_recorte_temporal'][0]
                     x1, y1 = estado['area_recorte_temporal'][1]
-                    rect = (min(x0, x1), min(y0, y1), max(x0, x1), max(y0, y1))
+                    estado['area_recorte'] = (min(x0, x1), min(y0, y1), max(x0, x1), max(y0, y1))
                     estado['area_recorte_temporal'] = None
                     estado = redibujar_todo(estado)
                 estado['dibujando'] = False
@@ -1079,11 +1084,11 @@ def main():
                     estado['grosor_linea'] = max(1, estado['grosor_linea'] - 1)
                     estado = redibujar_todo(estado)
                 elif evento.key == pygame.K_ESCAPE:
-                    rect = None
+                    estado['area_recorte'] = None
                     estado['area_recorte_temporal'] = None
                     estado['figura_seleccionada'] = None
                     estado = redibujar_todo(estado)
-                elif evento.key == pygame.K_c and estado['herramienta_actual'] == "recortar" and rect:
+                elif evento.key == pygame.K_c and estado['herramienta_actual'] == "recortar" and estado['area_recorte']:
                     estado = aplicar_recorte(estado)
                     estado = redibujar_todo(estado)
                 elif evento.key == pygame.K_f:
