@@ -972,7 +972,37 @@ def main():
             elif evento.type == pygame.MOUSEBUTTONDOWN:
                 x, y = evento.pos
                 if y > 40:
-                    estado['dibujando'] = True  # <-- Activa el modo de dibujo aquí
+                    estado['dibujando'] = True
+                    if estado['herramienta_actual'] == "linea":
+                        if not estado['puntos']:
+                            estado['puntos'].append((x, y))
+                        else:
+                            x0, y0 = estado['puntos'][0]
+                            estado = dibujar_linea_bresenham(estado, x0, y0, x, y)
+                            estado['puntos'] = []
+                            estado = redibujar_todo(estado)
+                    elif estado['herramienta_actual'] == "circulo":
+                        if not estado['puntos']:
+                            estado['puntos'].append((x, y))
+                        else:
+                            x0, y0 = estado['puntos'][0]
+                            radio = int(((x - x0) ** 2 + (y - y0) ** 2) ** 0.5)
+                            estado = dibujar_circulo(estado, x0, y0, radio)
+                            estado['puntos'] = []
+                            estado = redibujar_todo(estado)
+                    elif estado['herramienta_actual'] == "curva":
+                        estado['puntos_control'].append((x, y))
+                        if len(estado['puntos_control']) == 3:
+                            estado['curvas_almacenadas'].append((list(estado['puntos_control']), estado['color_actual'], estado['grosor_linea']))
+                            estado['puntos_control'] = []
+                            estado = redibujar_todo(estado)
+                    elif estado['herramienta_actual'] == SELECCIONAR:
+                        seleccion = seleccionar_figura(estado, x, y)
+                        estado['figura_seleccionada'] = seleccion
+                        estado = redibujar_todo(estado)
+                    elif estado['herramienta_actual'] == "recortar":
+                        if not estado['area_recorte_temporal']:
+                            estado['area_recorte_temporal'] = [(x, y)]
                 else:
                     herramientas = ["lapiz", "linea", "circulo", "curva", "borrador", "rectangulo", "recortar", SELECCIONAR]
                     for i, herramienta in enumerate(herramientas):
