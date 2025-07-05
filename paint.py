@@ -237,277 +237,33 @@ def recortar_linea_cohen_sutherland(x0, y0, x1, y1, rectangulo_recorte):
         elif codigo0 & codigo1:
             break
         else:
-            x, y = 0, 0
-            codigo_fuera = codigo0 if codigo0 else codigo1
+            glVertex2f(xa, ya)
+            glVertex2f(xb, yb)
+    glEnd()
+    glLineWidth(1)
 
-            if codigo_fuera & ARRIBA:
-                x = x0 + (x1 - x0) * (rectangulo_recorte[3] - y0) / (y1 - y0)
-                y = rectangulo_recorte[3]
-            elif codigo_fuera & ABAJO:
-                x = x0 + (x1 - x0) * (rectangulo_recorte[1] - y0) / (y1 - y0)
-                y = rectangulo_recorte[1]
-            elif codigo_fuera & DERECHA:
-                y = y0 + (y1 - y0) * (rectangulo_recorte[2] - x0) / (x1 - x0)
-                x = rectangulo_recorte[2]
-            elif codigo_fuera & IZQUIERDA:
-                y = y0 + (y1 - y0) * (rectangulo_recorte[0] - x0) / (x1 - x0)
-                x = rectangulo_recorte[0]
+def draw_grid():
+    if not show_grid:
+        return
+        
+    glColor3f(0.9, 0.9, 0.9)
+    glLineWidth(1)
+    glBegin(GL_LINES)
+    
+    # Líneas verticales
+    for x in range(0, width, grid_size):
+        glVertex2f(x, 40)
+        glVertex2f(x, height)
+    
+    # Líneas horizontales
+    for y in range(40, height, grid_size):
+        glVertex2f(0, y)
+        glVertex2f(width, y)
+    
+    glEnd()
 
-            if codigo_fuera == codigo0:
-                x0, y0 = x, y
-                codigo0 = calcular_codigo(x0, y0, rectangulo_recorte)
-            else:
-                x1, y1 = x, y
-                codigo1 = calcular_codigo(x1, y1, rectangulo_recorte)
-
-    if aceptar:
-        return (x0, y0, x1, y1)
-    return None
-
-def punto_en_circulo(punto, centro, radio):
-    distancia = math.hypot(punto[0] - centro[0], punto[1] - centro[1])
-    return distancia <= radio
-
-def punto_en_rectangulo(punto, rect):
-    x, y = punto
-    x0, y0, x1, y1 = rect
-    return min(x0, x1) <= x <= max(x0, x1) and min(y0, y1) <= y <= max(y0, y1)
-
-def punto_en_linea(punto, linea, umbral=5):
-    x, y = punto
-    x0, y0, x1, y1 = linea
-    
-    if x0 == x1 and y0 == y1:
-        return math.hypot(x - x0, y - y0) <= umbral
-    
-    longitud = math.hypot(x1 - x0, y1 - y0)
-    if longitud == 0:
-        return math.hypot(x - x0, y - y0) <= umbral
-    
-    t = ((x - x0) * (x1 - x0) + (y - y0) * (y1 - y0)) / (longitud ** 2)
-    t = max(0, min(1, t))
-    proy_x = x0 + t * (x1 - x0)
-    proy_y = y0 + t * (y1 - y0)
-    
-    distancia = math.hypot(x - proy_x, y - proy_y)
-    return distancia <= umbral
-
-def seleccionar_figura(estado, x, y):
-    for i, circulo in enumerate(estado['circulos_almacenados']):
-        cx, cy, radio, color, grosor = circulo
-        if punto_en_circulo((x, y), (cx, cy), radio + grosor):
-            return ('circulo', i)
-    
-    for i, rect in enumerate(estado['rectangulos_almacenados']):
-        x0, y0, x1, y1, color, grosor = rect
-        if punto_en_rectangulo((x, y), (x0, y0, x1, y1)):
-            return ('rectangulo', i)
-    
-    for i, linea in enumerate(estado['lineas_almacenadas']):
-        x0, y0, x1, y1, color, grosor = linea
-        if punto_en_linea((x, y), (x0, y0, x1, y1), grosor + 2):
-            return ('linea', i)
-    
-    for i, curva in enumerate(estado['curvas_almacenadas']):
-        puntos_control, color, grosor = curva
-        for px, py in puntos_control:
-            if math.hypot(x - px, y - py) <= grosor + 5:
-                return ('curva', i)
-    
-    return None
-
-def rotar_figura(estado, angulo):
-    if not estado['figura_seleccionada']:
-        return estado
-    
-    tipo, indice = estado['figura_seleccionada']
-    
-    if tipo == 'circulo':
-        # Rotar un círculo no cambia su apariencia, pero podemos rotar su posición si queremos
-        cx, cy, radio, color, grosor = estado['circulos_almacenados'][indice]
-        centro_x, centro_y = cx, cy
-        
-        T1 = crear_matriz_traslacion(-centro_x, -centro_y)
-        R = crear_matriz_rotacion(angulo)
-        T2 = crear_matriz_traslacion(centro_x, centro_y)
-        M = T2.dot(R).dot(T1)
-        
-        nuevo_cx, nuevo_cy = aplicar_transformacion((cx, cy), M)
-        estado['circulos_almacenados'][indice] = (nuevo_cx, nuevo_cy, radio, color, grosor)
-    
-    elif tipo == 'rectangulo':
-        x0, y0, x1, y1, color, grosor = estado['rectangulos_almacenados'][indice]
-        centro_x = (x0 + x1) / 2
-        centro_y = (y0 + y1) / 2
-        
-        T1 = crear_matriz_traslacion(-centro_x, -centro_y)
-        R = crear_matriz_rotacion(angulo)
-        T2 = crear_matriz_traslacion(centro_x, centro_y)
-        M = T2.dot(R).dot(T1)
-        
-        x0n, y0n = aplicar_transformacion((x0, y0), M)
-        x1n, y1n = aplicar_transformacion((x1, y1), M)
-        
-        estado['rectangulos_almacenados'][indice] = (x0n, y0n, x1n, y1n, color, grosor)
-    
-    elif tipo == 'linea':
-        x0, y0, x1, y1, color, grosor = estado['lineas_almacenadas'][indice]
-        centro_x = (x0 + x1) / 2
-        centro_y = (y0 + y1) / 2
-        
-        T1 = crear_matriz_traslacion(-centro_x, -centro_y)
-        R = crear_matriz_rotacion(angulo)
-        T2 = crear_matriz_traslacion(centro_x, centro_y)
-        M = T2.dot(R).dot(T1)
-        
-        x0n, y0n = aplicar_transformacion((x0, y0), M)
-        x1n, y1n = aplicar_transformacion((x1, y1), M)
-        
-        estado['lineas_almacenadas'][indice] = (x0n, y0n, x1n, y1n, color, grosor)
-    
-    elif tipo == 'curva':
-        puntos_control, color, grosor = estado['curvas_almacenadas'][indice]
-        centro_x = sum(p[0] for p in puntos_control) / len(puntos_control)
-        centro_y = sum(p[1] for p in puntos_control) / len(puntos_control)
-        
-        T1 = crear_matriz_traslacion(-centro_x, -centro_y)
-        R = crear_matriz_rotacion(angulo)
-        T2 = crear_matriz_traslacion(centro_x, centro_y)
-        M = T2.dot(R).dot(T1)
-        
-        nuevos_puntos = [aplicar_transformacion(p, M) for p in puntos_control]
-        estado['curvas_almacenadas'][indice] = (nuevos_puntos, color, grosor)
-    
-    return estado
-
-def escalar_figura(estado, factor):
-    if not estado['figura_seleccionada']:
-        return estado
-    
-    tipo, indice = estado['figura_seleccionada']
-    estado['factor_escala'] *= factor
-    
-    if tipo == 'circulo':
-        cx, cy, radio, color, grosor = estado['circulos_almacenados'][indice]
-        estado['circulos_almacenados'][indice] = (cx, cy, radio * factor, color, grosor)
-    
-    elif tipo == 'rectangulo':
-        x0, y0, x1, y1, color, grosor = estado['rectangulos_almacenados'][indice]
-        centro_x = (x0 + x1) / 2
-        centro_y = (y0 + y1) / 2
-        
-        T1 = crear_matriz_traslacion(-centro_x, -centro_y)
-        S = crear_matriz_escala(factor, factor)
-        T2 = crear_matriz_traslacion(centro_x, centro_y)
-        M = T2.dot(S).dot(T1)
-        
-        x0n, y0n = aplicar_transformacion((x0, y0), M)
-        x1n, y1n = aplicar_transformacion((x1, y1), M)
-        
-        estado['rectangulos_almacenados'][indice] = (x0n, y0n, x1n, y1n, color, grosor)
-    
-    elif tipo == 'linea':
-        x0, y0, x1, y1, color, grosor = estado['lineas_almacenadas'][indice]
-        centro_x = (x0 + x1) / 2
-        centro_y = (y0 + y1) / 2
-        
-        T1 = crear_matriz_traslacion(-centro_x, -centro_y)
-        S = crear_matriz_escala(factor, factor)
-        T2 = crear_matriz_traslacion(centro_x, centro_y)
-        M = T2.dot(S).dot(T1)
-        
-        x0n, y0n = aplicar_transformacion((x0, y0), M)
-        x1n, y1n = aplicar_transformacion((x1, y1), M)
-        
-        estado['lineas_almacenadas'][indice] = (x0n, y0n, x1n, y1n, color, grosor)
-    
-    elif tipo == 'curva':
-        puntos_control, color, grosor = estado['curvas_almacenadas'][indice]
-        centro_x = sum(p[0] for p in puntos_control) / len(puntos_control)
-        centro_y = sum(p[1] for p in puntos_control) / len(puntos_control)
-        
-        T1 = crear_matriz_traslacion(-centro_x, -centro_y)
-        S = crear_matriz_escala(factor, factor)
-        T2 = crear_matriz_traslacion(centro_x, centro_y)
-        M = T2.dot(S).dot(T1)
-        
-        nuevos_puntos = [aplicar_transformacion(p, M) for p in puntos_control]
-        estado['curvas_almacenadas'][indice] = (nuevos_puntos, color, grosor)
-    
-    return estado
-
-def aplicar_recorte(estado):
-    if not estado['area_recorte']:
-        return estado
-    x0, y0, x1, y1 = estado['area_recorte']
-
-    estado['pixeles_almacenados'] = [
-        (x, y, color, tamanho) for (x, y, color, tamanho) in estado['pixeles_almacenados']
-        if x0 <= x <= x1 and y0 <= y <= y1
-    ]
-
-    estado['lineas_almacenadas'] = [
-        (nx0, ny0, nx1, ny1, color, grosor)
-        for (x0_l, y0_l, x1_l, y1_l, color, grosor) in estado['lineas_almacenadas']
-        if (resultado := recortar_linea_cohen_sutherland(x0_l, y0_l, x1_l, y1_l, estado['area_recorte']))
-        for (nx0, ny0, nx1, ny1) in [resultado]
-    ]
-
-    # Recorte destructivo para curvas (filtra puntos de la curva)
-    nuevas_curvas = []
-    for puntos_control, color, grosor in estado['curvas_almacenadas']:
-        curva = calcular_b_spline(puntos_control)
-        curva_recortada = [
-            (x, y) for (x, y) in curva
-            if x0 <= x <= x1 and y0 <= y <= y1
-        ]
-        if curva_recortada:
-            # Guarda los puntos recortados como una curva "plana"
-            nuevas_curvas.append((curva_recortada, color, grosor))
-    estado['curvas_almacenadas'] = nuevas_curvas
-
-    # Recorte destructivo para círculos (filtra puntos del círculo)
-    nuevas_circulos = []
-    for datos in estado['circulos_almacenados']:
-        if len(datos) == 5:
-            cx, cy, radio, color, grosor = datos
-            puntos = []
-            for i in range(100):
-                angulo = 2 * math.pi * i / 100
-                x = cx + radio * math.cos(angulo)
-                y = cy + radio * math.sin(angulo)
-                if x0 <= x <= x1 and y0 <= y <= y1:
-                    puntos.append((x, y))
-            if puntos:
-                nuevas_circulos.append((puntos, color, grosor))
-        elif len(datos) == 3:
-            puntos, color, grosor = datos
-            puntos_recortados = [(x, y) for (x, y) in puntos if x0 <= x <= x1 and y0 <= y <= y1]
-            if puntos_recortados:
-                nuevas_circulos.append((puntos_recortados, color, grosor))
-    estado['circulos_almacenados'] = nuevas_circulos
-
-    # Recorte destructivo para rectángulos (cada lado como línea)
-    nuevas_rectangulos = []
-    for x0_r, y0_r, x1_r, y1_r, color, grosor in estado['rectangulos_almacenados']:
-        lados = [
-            (x0_r, y0_r, x1_r, y0_r),  # arriba
-            (x1_r, y0_r, x1_r, y1_r),  # derecha
-            (x1_r, y1_r, x0_r, y1_r),  # abajo
-            (x0_r, y1_r, x0_r, y0_r),  # izquierda
-        ]
-        for lx0, ly0, lx1, ly1 in lados:
-            rec = recortar_linea_cohen_sutherland(lx0, ly0, lx1, ly1, estado['area_recorte'])
-            if rec:
-                nuevas_rectangulos.append((*rec, color, grosor))
-    estado['rectangulos_almacenados'] = []
-    estado['lineas_almacenadas'].extend(nuevas_rectangulos)
-
-    estado['area_recorte'] = None
-    return estado
-
-def dibujar_icono(herramienta, x):
-    if herramienta == "lapiz":
+def draw_icon(tool, x):
+    if tool == "pencil":
         glColor3f(0, 0, 0)
         glLineWidth(2)
         glBegin(GL_LINES)
@@ -696,66 +452,17 @@ def redibujar_todo(estado):
     
     for i, (x0, y0, x1, y1, color, grosor) in enumerate(estado['lineas_almacenadas']):
         glColor3f(*color)
-        glLineWidth(grosor)
-        dibujar_linea_bresenham(estado, x0, y0, x1, y1, almacenar=False)
-        
-        if estado['figura_seleccionada'] and estado['figura_seleccionada'][0] == 'linea' and estado['figura_seleccionada'][1] == i:
-            glColor3f(0, 1, 1)
-            glLineWidth(grosor + 2)
-            dibujar_linea_bresenham(estado, x0, y0, x1, y1, almacenar=False)
-    
-    for i, (pts, color, grosor) in enumerate(estado['curvas_almacenadas']):
+        glLineWidth(width)
+        draw_line_bresenham(x0, y0, x1, y1, store=False)
+    for pts, color, width in stored_curves:
         glColor3f(*color)
-        glPointSize(grosor)
-        glBegin(GL_POINTS)
-        curva = calcular_b_spline(pts)
-        for x, y in curva:
-            if not estado['area_recorte'] or (
-                estado['area_recorte'][0] <= x <= estado['area_recorte'][2] and
-                estado['area_recorte'][1] <= y <= estado['area_recorte'][3]
-            ):
-                glVertex2f(x, y)
-        glEnd()
-    glPointSize(1)
-
-    for i, datos in enumerate(estado['circulos_almacenados']):
-        if len(datos) == 5:
-            # Círculo normal: (cx, cy, radio, color, grosor)
-            cx, cy, radio, color, grosor = datos
-            glColor3f(*color)
-            glPointSize(grosor)
-            glBegin(GL_POINTS)
-            for j in range(100):
-                angulo = 2 * math.pi * j / 100
-                x = cx + radio * math.cos(angulo)
-                y = cy + radio * math.sin(angulo)
-                if not estado['area_recorte'] or (
-                    estado['area_recorte'][0] <= x <= estado['area_recorte'][2] and
-                    estado['area_recorte'][1] <= y <= estado['area_recorte'][3]
-                ):
-                    glVertex2f(x, y)
-            glEnd()
-            glPointSize(1)
-        elif len(datos) == 3:
-            # Círculo recortado: (lista_puntos, color, grosor)
-            puntos, color, grosor = datos
-            glColor3f(*color)
-            glPointSize(grosor)
-            glBegin(GL_POINTS)
-            for x, y in puntos:
-                glVertex2f(x, y)
-            glEnd()
-            glPointSize(1)
-
-    # Selección visual igual que arriba si quieres
-    
-    for i, (x0, y0, x1, y1, color, grosor) in enumerate(estado['rectangulos_almacenados']):
-        lados = [
-            (x0, y0, x1, y0),  # arriba
-            (x1, y0, x1, y1),  # derecha
-            (x1, y1, x0, y1),  # abajo
-            (x0, y1, x0, y0),  # izquierda
-        ]
+        glLineWidth(width)
+        draw_bezier_curve(pts, store=False)
+    for cx, cy, radius, color, width in stored_circles:
+        glColor3f(*color)
+        glLineWidth(width)
+        draw_circle(cx, cy, radius, store=False)
+    for x0, y0, x1, y1, color, width in stored_rectangles:
         glColor3f(*color)
         glLineWidth(grosor)
         for lx0, ly0, lx1, ly1 in lados:
@@ -804,146 +511,11 @@ def redibujar_todo(estado):
         glVertex2f(x1, y1)
         glVertex2f(x0, y1)
         glEnd()
-    
-    dibujar_barra_herramientas(estado)
-    pygame.display.flip()
-    return estado
-
-def calcular_catmull_rom(puntos_control, segmentos=100):
-    # Si solo hay 3 puntos, repetimos el primero y el último para tener 4
-    if len(puntos_control) == 3:
-        p0, p1, p2 = puntos_control
-        p3 = p2
-        p_0 = p0
-    elif len(puntos_control) == 4:
-        p_0, p0, p1, p2 = puntos_control
-        p3 = p2
-    else:
-        return []
-    curva = []
-    for i in range(segmentos + 1):
-        t = i / segmentos
-        # Catmull-Rom para 4 puntos
-        x = 0.5 * (
-            (2 * p0[0]) +
-            (-p_0[0] + p1[0]) * t +
-            (2*p_0[0] - 5*p0[0] + 4*p1[0] - p2[0]) * t**2 +
-            (-p_0[0] + 3*p0[0] - 3*p1[0] + p2[0]) * t**3
-        )
-        y = 0.5 * (
-            (2 * p0[1]) +
-            (-p_0[1] + p1[1]) * t +
-            (2*p_0[1] - 5*p0[1] + 4*p1[1] - p2[1]) * t**2 +
-            (-p_0[1] + 3*p0[1] - 3*p1[1] + p2[1]) * t**3
-        )
-        curva.append((x, y))
-    return curva
-
-def calcular_b_spline(puntos_control, segmentos=100):
-    # B-Spline cuadrática para 3 puntos de control
-    if len(puntos_control) != 3:
-        return []
-    p0, p1, p2 = puntos_control
-    curva = []
-    for i in range(segmentos + 1):
-        t = i / segmentos
-        # Fórmulas de B-Spline cuadrática
-        b0 = (1 - t) ** 2 / 2
-        b1 = (-2 * t ** 2 + 2 * t + 1) / 2
-        b2 = t ** 2 / 2
-        x = b0 * p0[0] + b1 * p1[0] + b2 * p2[0]
-        y = b0 * p0[1] + b1 * p1[1] + b2 * p2[1]
-        curva.append((x, y))
-    return curva
-
-def abrir_ventana_3d():
-    ancho, alto = 600, 500
-    pygame.init()
-    pantalla = pygame.display.set_mode((ancho, alto), DOUBLEBUF | OPENGL)
-    pygame.display.set_caption("Dibujo en Plano 3D")
-    glViewport(0, 0, ancho, alto)
-    glMatrixMode(GL_PROJECTION)
-    glLoadIdentity()
-    gluPerspective(45, (ancho / alto), 0.1, 100.0)
-    glMatrixMode(GL_MODELVIEW)
-    glLoadIdentity()
-    glEnable(GL_DEPTH_TEST)
-
-    puntos = []
-    lineas = []
-    modo = "punto"
-    angulo_x = 30
-    angulo_y = -30
-    mouse_down = False
-    last_pos = (0, 0)
-
-    ejecutando = True
-    while ejecutando:
-        for evento in pygame.event.get():
-            if evento.type == pygame.QUIT:
-                ejecutando = False
-            elif evento.type == pygame.KEYDOWN:
-                if evento.key == pygame.K_ESCAPE:
-                    ejecutando = False
-                elif evento.key == pygame.K_2:  # Presiona TAB para regresar a 2D
-                    ejecutando = False
-                elif evento.key == pygame.K_l:
-                    modo = "linea"
-                elif evento.key == pygame.K_p:
-                    modo = "punto"
-            elif evento.type == pygame.MOUSEBUTTONDOWN:
-                if evento.button == 1:
-                    mx, my = evento.pos
-                    x2d = ancho - 60
-                    if x2d <= mx <= x2d + 30 and 5 <= my <= 35:
-                        ejecutando = False
-                        continue
-                    x = (mx / ancho) * 2 - 1
-                    y = -((my / alto) * 2 - 1)
-                    x3d = x * 3
-                    y3d = y * 3
-                    if modo == "punto":
-                        puntos.append((x3d, y3d))
-                    elif modo == "linea":
-                        if len(lineas) % 2 == 0:
-                            lineas.append([(x3d, y3d)])
-                        else:
-                            lineas[-1].append((x3d, y3d))
-                elif evento.button == 3:
-                    mouse_down = True
-                    last_pos = evento.pos
-            elif evento.type == pygame.MOUSEBUTTONUP:
-                if evento.button == 3:
-                    mouse_down = False
-            elif evento.type == pygame.MOUSEMOTION:
-                if mouse_down:
-                    dx = evento.pos[0] - last_pos[0]
-                    dy = evento.pos[1] - last_pos[1]
-                    angulo_x += dy
-                    angulo_y += dx
-                    last_pos = evento.pos
-
-        glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT)
-        glLoadIdentity()
-        glTranslatef(0, 0, -10)
-        glRotatef(angulo_x, 1, 0, 0)
-        glRotatef(angulo_y, 0, 1, 0)
-
-        # Ejes
-        glLineWidth(3)
-        glBegin(GL_LINES)
-        # X - rojo
-        glColor3f(1, 0, 0)
-        glVertex3f(0, 0, 0)
-        glVertex3f(2, 0, 0)
-        # Y - verde
-        glColor3f(0, 1, 0)
-        glVertex3f(0, 0, 0)
-        glVertex3f(0, 2, 0)
-        # Z - azul
-        glColor3f(0, 0, 1)
-        glVertex3f(0, 0, 0)
-        glVertex3f(0, 0, 2)
+        
+        glColor4f(0.7, 0.7, 0.9, 0.5)
+        glBegin(GL_QUADS)
+        glVertex2f(0, 0); glVertex2f(width, 0)
+        glVertex2f(width, height); glVertex2f(0, height)
         glEnd()
         glLineWidth(1)
 
@@ -964,157 +536,93 @@ def abrir_ventana_3d():
         for px, py in puntos:
             glVertex3f(px, py, 0)
         glEnd()
-
-        # Líneas
-        glColor3f(0, 0, 1)
-        glLineWidth(3)
-        for linea in lineas:
-            if len(linea) == 2:
-                glBegin(GL_LINES)
-                glVertex3f(linea[0][0], linea[0][1], 0)
-                glVertex3f(linea[1][0], linea[1][1], 0)
-                glEnd()
-        glLineWidth(1)
-
-        pygame.display.flip()
-        pygame.time.wait(10)
-    pygame.quit()
-
-def main():
-    estado = inicializar_pygame()
-    estado = redibujar_todo(estado)
-    ejecutando = True
-    while ejecutando:
-        for evento in pygame.event.get():
-            if evento.type == pygame.QUIT:
-                ejecutando = False
-            # ...existing code...
-            elif evento.type == pygame.MOUSEBUTTONDOWN:
-                x, y = evento.pos
-                if y > 40:
-                    estado['dibujando'] = True
-                    if estado['herramienta_actual'] == "linea":
-                        if not estado['puntos']:
-                            estado['puntos'].append((x, y))
-                        else:
-                            x0, y0 = estado['puntos'][0]
-                            estado = dibujar_linea_bresenham(estado, x0, y0, x, y)
-                            estado['puntos'] = []
-                            estado = redibujar_todo(estado)
-                    elif estado['herramienta_actual'] == "circulo":
-                        if not estado['puntos']:
-                            estado['puntos'].append((x, y))
-                        else:
-                            x0, y0 = estado['puntos'][0]
-                            radio = int(((x - x0) ** 2 + (y - y0) ** 2) ** 0.5)
-                            estado = dibujar_circulo(estado, x0, y0, radio)
-                            estado['puntos'] = []
-                            estado = redibujar_todo(estado)
-                    elif estado['herramienta_actual'] == "curva":
-                        estado['puntos_control'].append((x, y))
-                        if len(estado['puntos_control']) == 3:
-                            estado['curvas_almacenadas'].append((list(estado['puntos_control']), estado['color_actual'], estado['grosor_linea']))
-                            estado['puntos_control'] = []
-                            estado = redibujar_todo(estado)
-                    elif estado['herramienta_actual'] == SELECCIONAR:
-                        seleccion = seleccionar_figura(estado, x, y)
-                        estado['figura_seleccionada'] = seleccion
-                        estado = redibujar_todo(estado)
-                    elif estado['herramienta_actual'] == "recortar":
-                        if not estado['area_recorte_temporal']:
-                            estado['area_recorte_temporal'] = [(x, y)]
-                else:
-                    herramientas = ["lapiz", "linea", "circulo", "curva", "borrador", "rectangulo", "recortar", SELECCIONAR]
-                    for i, herramienta in enumerate(herramientas):
-                        if 10 + i * 40 <= x <= 40 + i * 40:
-                            estado['herramienta_actual'] = herramienta
-                            if herramienta != "recortar":
-                                estado['area_recorte'] = None
-                            if herramienta != SELECCIONAR:
-                                estado['figura_seleccionada'] = None
-
-                    colores = [(255, 0, 0), (0, 255, 0), (0, 0, 255), (0, 0, 0), (255, 255, 255)]
-                    for i, (r, g, b) in enumerate(colores):
-                        if 290 + i * 35 <= x <= 320 + i * 35:
-                            estado = establecer_color(estado, r, g, b)
-
-                    # Botón 3D
-                    x3d = estado['ancho'] - 100
-                    if x3d <= x <= x3d + 30:
-                        abrir_ventana_3d()
-
-                    # Botón 2D (esquina superior derecha en la ventana 3D)
-                    x2d = estado['ancho'] - 60
-                    if x2d <= x <= x2d + 30:
-                        ejecutando = False
-                        continue
-
-                    estado['puntos'].clear()
-                    estado['puntos_control'].clear()
-                    estado = redibujar_todo(estado)
-            
-            elif evento.type == pygame.MOUSEBUTTONUP:
-                if estado['herramienta_actual'] == "recortar" and estado['area_recorte_temporal'] and len(estado['area_recorte_temporal']) == 1:
-                    x, y = pygame.mouse.get_pos()
-                    estado['area_recorte_temporal'].append((x, y))
-                    x0, y0 = estado['area_recorte_temporal'][0]
-                    x1, y1 = estado['area_recorte_temporal'][1]
-                    estado['area_recorte'] = (min(x0, x1), min(y0, y1), max(x0, x1), max(y0, y1))
-                    estado['area_recorte_temporal'] = None
-                    estado = redibujar_todo(estado)
-                estado['dibujando'] = False
-            
-            elif evento.type == pygame.MOUSEMOTION and estado['dibujando']:
-                x, y = evento.pos
-                if y > 40:
-                    if estado['herramienta_actual'] == "lapiz":
-                        estado = dibujar_pixel(estado, x, y)
-                    elif estado['herramienta_actual'] == "borrador":
-                        estado = borrar_en(estado, x, y)
-                    estado = redibujar_todo(estado)
-            
-            elif evento.type == pygame.KEYDOWN:
-                if evento.key == pygame.K_g and not (pygame.key.get_mods() & pygame.KMOD_SHIFT):
-                    estado['mostrar_cuadricula'] = not estado['mostrar_cuadricula']
-                    estado = redibujar_todo(estado)
-                elif evento.key == pygame.K_t:
-                    estado['grosor_linea'] = min(10, estado['grosor_linea'] + 1)
-                    estado = redibujar_todo(estado)
-                elif evento.key == pygame.K_g and (pygame.key.get_mods() & pygame.KMOD_SHIFT):
-                    estado['grosor_linea'] = max(1, estado['grosor_linea'] - 1)
-                    estado = redibujar_todo(estado)
-                elif evento.key == pygame.K_ESCAPE:
-                    estado['area_recorte'] = None
-                    estado['area_recorte_temporal'] = None
-                    estado['figura_seleccionada'] = None
-                    estado = redibujar_todo(estado)
-                elif evento.key == pygame.K_c and estado['herramienta_actual'] == "recortar" and estado['area_recorte']:
-                    estado = aplicar_recorte(estado)
-                    estado = redibujar_todo(estado)
-                elif evento.key == pygame.K_f:
-                    estado['herramienta_actual'] = SELECCIONAR
-                    estado = redibujar_todo(estado)
-                elif evento.key == pygame.K_r:
-                    if estado['figura_seleccionada']:
-                        angulo = 15
-                        if pygame.key.get_mods() & pygame.KMOD_SHIFT:
-                            angulo = -15
-                        estado = rotar_figura(estado, angulo)
-                        estado = redibujar_todo(estado)
-                elif evento.key == pygame.K_s:
-                    if estado['figura_seleccionada']:
-                        factor = 1.1
-                        if pygame.key.get_mods() & pygame.KMOD_SHIFT:
-                            factor = 0.9
-                        estado = escalar_figura(estado, factor)
-                        estado = redibujar_todo(estado)
-        
-        if estado['herramienta_actual'] == "recortar" and estado['area_recorte_temporal'] and len(estado['area_recorte_temporal']) == 1:
-            estado = redibujar_todo(estado)
-        
-        pygame.time.wait(10)
     
-    pygame.quit()
+    draw_toolbar()
+    pygame.display.flip()
 
-#Funcion principal
-main()
+running = True
+redraw_all()
+while running:
+    for event in pygame.event.get():
+        if event.type == pygame.QUIT:
+            running = False
+        elif event.type == pygame.MOUSEBUTTONDOWN:
+            x, y = event.pos
+            if y > 40:
+                if current_tool == "pencil":
+                    drawing = True
+                    draw_pixel(x, y)
+                elif current_tool == "eraser":
+                    drawing = True
+                    erase_at(x, y)
+                elif current_tool == "line":
+                    points.append((x, y))
+                    if len(points) == 2:
+                        draw_line_bresenham(*points[0], *points[1])
+                        points.clear()
+                elif current_tool == "circle":
+                    points.append((x, y))
+                    if len(points) == 2:
+                        x0, y0 = points[0]
+                        radius = int(math.hypot(x - x0, y - y0))
+                        draw_circle(x0, y0, radius)
+                        points.clear()
+                elif current_tool == "rectangle":
+                    points.append((x, y))
+                    if len(points) == 2:
+                        draw_rectangle(*points[0], *points[1])
+                        points.clear()
+                elif current_tool == "curve":
+                    control_points.append((x, y))
+                    if len(control_points) == 3:
+                        draw_bezier_curve(control_points)
+                        control_points.clear()
+                elif current_tool == "crop":
+                    points.append((x, y))
+                    if len(points) == 2:
+                        x0, y0 = min(points[0][0], points[1][0]), min(points[0][1], points[1][1])
+                        x1, y1 = max(points[0][0], points[1][0]), max(points[0][1], points[1][1])
+                        clipping_rect = (x0, y0, x1, y1)
+                        points.clear()
+                redraw_all()
+            else:
+                tools = ["pencil", "line", "circle", "curve", "eraser", "rectangle", "crop"]
+                for i, tool in enumerate(tools):
+                    if 10 + i * 40 <= x <= 40 + i * 40:
+                        current_tool = tool
+                        if tool != "crop":
+                            clipping_rect = None
+                
+                colors = [(255, 0, 0), (0, 255, 0), (0, 0, 255), (0, 0, 0), (255, 255, 255)]
+                for i, (r, g, b) in enumerate(colors):
+                    if 290 + i * 35 <= x <= 320 + i * 35:
+                        set_color(r, g, b)
+                
+                points.clear(); control_points.clear()
+                redraw_all()
+        elif event.type == pygame.MOUSEBUTTONUP:
+            drawing = False
+        elif event.type == pygame.MOUSEMOTION and drawing:
+            x, y = event.pos
+            if y > 40:
+                if current_tool == "pencil":
+                    draw_pixel(x, y)
+                elif current_tool == "eraser":
+                    erase_at(x, y)
+                redraw_all()
+        elif event.type == pygame.KEYDOWN:
+            if event.key == pygame.K_g:
+                show_grid = not show_grid
+                redraw_all()
+            elif event.key == pygame.K_t:
+                line_width = min(10, line_width + 1)
+                redraw_all()
+            elif event.key == pygame.K_g and pygame.key.get_mods() & pygame.KMOD_SHIFT:
+                line_width = max(1, line_width - 1)
+                redraw_all()
+            elif event.key == pygame.K_ESCAPE:
+                clipping_rect = None
+                redraw_all()
+    
+    pygame.time.wait(10)
+pygame.quit()
