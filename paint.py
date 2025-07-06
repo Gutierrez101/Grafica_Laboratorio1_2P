@@ -19,7 +19,7 @@ ABAJO = 4
 ARRIBA = 8
 SELECCIONAR = 'seleccionar'
 
-# Funciones de transformación con matrices
+# matriz de transformacion de traslacion
 def crear_matriz_traslacion(tx, ty):
     return np.array([
         [1, 0, tx],
@@ -27,6 +27,7 @@ def crear_matriz_traslacion(tx, ty):
         [0, 0, 1]
     ])
 
+# matriz de transformacion de rotacion
 def crear_matriz_rotacion(angulo):
     rad = math.radians(angulo)
     cos = math.cos(rad)
@@ -37,6 +38,7 @@ def crear_matriz_rotacion(angulo):
         [0, 0, 1]
     ])
 
+# matriz de transformacion de escala
 def crear_matriz_escala(sx, sy):
     return np.array([
         [sx, 0, 0],
@@ -114,7 +116,7 @@ def establecer_color(estado, r, g, b):
     estado['color_actual'] = (r/255.0, g/255.0, b/255.0)
     return estado
 
-#Establacer los pixeles
+#Establacer los pixeles de las figuras
 def dibujar_pixel(estado, x, y, almacenar=True, color=None, tamanho=None):
     if color is None:
         color = estado['color_actual']
@@ -210,7 +212,7 @@ def dibujar_circulo(estado, cx, cy, radio, segmentos=100, almacenar=True):
     glPointSize(1)
     return estado
 
-#Dibujar un rectangulo
+#Dibujar un rectangulo funcion deshabilidada
 def dibujar_rectangulo(estado, x0, y0, x1, y1, almacenar=True):
     if almacenar:
         estado['rectangulos_almacenados'].append((x0, y0, x1, y1, estado['color_actual'], estado['grosor_linea']))
@@ -277,7 +279,7 @@ def recortar_linea_cohen_sutherland(x0, y0, x1, y1, rectangulo_recorte):
         return (x0, y0, x1, y1)
     return None
 
-#Funciones para verificar los puntos
+#Funciones para verificar los puntos que hay en las figuras
 def punto_en_circulo(punto, centro, radio):
     distancia = math.hypot(punto[0] - centro[0], punto[1] - centro[1])
     return distancia <= radio
@@ -306,7 +308,7 @@ def punto_en_linea(punto, linea, umbral=5):
     distancia = math.hypot(x - proy_x, y - proy_y)
     return distancia <= umbral
 
-#Seleccionar una figura en el area de recorte
+#Seleccionar una figura en el area de recorte 
 def seleccionar_figura(estado, x, y):
     for i, circulo in enumerate(estado['circulos_almacenados']):
         cx, cy, radio, color, grosor = circulo
@@ -331,7 +333,8 @@ def seleccionar_figura(estado, x, y):
     
     return None
 
-#Funcion de rotar en base a la matriz de transformacion
+#Funcion de rotar en base a la matriz de transformacion segun el tipo de figura
+# Se aplica una matriz de rotación en base al centro de la figura
 def rotar_figura(estado, angulo):
     if not estado['figura_seleccionada']:
         return estado
@@ -395,7 +398,9 @@ def rotar_figura(estado, angulo):
     
     return estado
 
-#Escala la figura seleccionada
+#Escala la figura seleccionada dependiento de la figura
+# Se aplica una matriz de escala en base al centro de la figura
+# y se actualizan las coordenadas de la figura almacenada
 def escalar_figura(estado, factor):
     if not estado['figura_seleccionada']:
         return estado
@@ -452,7 +457,7 @@ def escalar_figura(estado, factor):
     
     return estado
 
-#Se aplica el recorte a las figuras
+#Se aplica el recorte a las figuras y dependiedo de la figura se recorta de diferente manera
 def aplicar_recorte(estado):
     if not estado['area_recorte']:
         return estado
@@ -520,19 +525,19 @@ def aplicar_recorte(estado):
     return estado
 
 def dibujar_icono(herramienta, x):
-    if herramienta == "lapiz":
+    if herramienta == "lapiz": # Icono de lápiz
         glColor3f(0, 0, 0)
         glLineWidth(2)
-        glBegin(GL_LINES)
-        glVertex2f(x + 8, 30); glVertex2f(x + 22, 15)
+        glBegin(GL_POINTS)
+        glVertex2f(x + 8, 30)#; glVertex2f(x + 22, 15)
         glEnd()
-    elif herramienta == "linea":
+    elif herramienta == "linea": # Icono de línea
         glColor3f(0, 0, 0)
         glLineWidth(2)
         glBegin(GL_LINES)
         glVertex2f(x + 5, 30); glVertex2f(x + 25, 10)
         glEnd()
-    elif herramienta == "circulo":
+    elif herramienta == "circulo": # Icono de círculo
         glColor3f(0, 0, 0)
         glLineWidth(2)
         glBegin(GL_LINE_LOOP)
@@ -540,7 +545,7 @@ def dibujar_icono(herramienta, x):
             angulo = 2 * math.pi * i / 20
             glVertex2f(x + 15 + 10 * math.cos(angulo), 20 + 10 * math.sin(angulo))
         glEnd()
-    elif herramienta == "curva":
+    elif herramienta == "curva":   # Icono de curva
         glColor3f(0, 0, 0)
         glLineWidth(2)
         glBegin(GL_LINE_STRIP)
@@ -552,7 +557,7 @@ def dibujar_icono(herramienta, x):
             yt = (1 - t) ** 2 * y0 + 2 * (1 - t) * t * y1 + t ** 2 * y2
             glVertex2f(xt, yt)
         glEnd()
-    elif herramienta == "borrador":
+    elif herramienta == "borrador": # Icono de borrador
         glColor3f(1, 1, 1)
         glRecti(x + 7, 13, x + 23, 29)
         glColor3f(0, 0, 0)
@@ -561,7 +566,7 @@ def dibujar_icono(herramienta, x):
         glVertex2f(x + 7, 13); glVertex2f(x + 23, 13)
         glVertex2f(x + 23, 29); glVertex2f(x + 7, 29)
         glEnd()
-    elif herramienta == "rectangulo":
+    elif herramienta == "rectangulo": # Icono de rectángulo
         glColor3f(0.7, 0.7, 0.9)
         glRecti(x + 8, 12, x + 22, 28)
         glColor3f(0, 0, 0)
@@ -570,7 +575,7 @@ def dibujar_icono(herramienta, x):
         glVertex2f(x + 8, 12); glVertex2f(x + 22, 12)
         glVertex2f(x + 22, 28); glVertex2f(x + 8, 28)
         glEnd()
-    elif herramienta == "recortar":
+    elif herramienta == "recortar": # Icono de recorte
         glColor3f(0.7, 0.7, 0.9)
         glRecti(x + 5, 10, x + 25, 30)
         glColor3f(1, 1, 1)
@@ -624,6 +629,7 @@ def dibujar_icono(herramienta, x):
         glVertex2f(x + 13, 22); glVertex2f(x + 13, 12)
         glEnd()
 
+# Dibuja la barra de herramientas con los iconos de las herramientas
 def dibujar_barra_herramientas(estado):
     glColor3f(0.9, 0.9, 0.9)
     glBegin(GL_QUADS)
@@ -702,9 +708,11 @@ def redibujar_todo(estado):
     
     dibujar_cuadricula(estado)
     
+    # Dibuja los pixeles almacenados si es que existen
     for x, y, color, tamanho in estado['pixeles_almacenados']:
         dibujar_pixel(estado, x, y, almacenar=False, color=color, tamanho=tamanho)
     
+    # Dibuja las líneas almacenadas si es que existen
     for i, (x0, y0, x1, y1, color, grosor) in enumerate(estado['lineas_almacenadas']):
         glColor3f(*color)
         glLineWidth(grosor)
@@ -715,6 +723,7 @@ def redibujar_todo(estado):
             glLineWidth(grosor + 2)
             dibujar_linea_bresenham(estado, x0, y0, x1, y1, almacenar=False)
     
+    # Dibuja las curvas almacenadas si es que existen
     for i, (pts, color, grosor) in enumerate(estado['curvas_almacenadas']):
         glColor3f(*color)
         glLineWidth(grosor)
@@ -729,6 +738,7 @@ def redibujar_todo(estado):
         glEnd()
         glLineWidth(1)
 
+    # Dibuja los círculos almacenados si es que existen
     for i, datos in enumerate(estado['circulos_almacenados']):
         if len(datos) == 5:
             cx, cy, radio, color, grosor = datos
@@ -756,6 +766,7 @@ def redibujar_todo(estado):
             glEnd()
             glPointSize(1)
 
+    # Dibuja los rectángulos almacenados si es que existen
     for i, (x0, y0, x1, y1, color, grosor) in enumerate(estado['rectangulos_almacenados']):
         lados = [
             (x0, y0, x1, y0),
@@ -774,6 +785,7 @@ def redibujar_todo(estado):
                 dibujar_linea_bresenham(estado, lx0, ly0, lx1, ly1, almacenar=False)
     glLineWidth(1)
 
+    # Dibuja el área de recorte con el raton
     if estado['area_recorte']:
         x0, y0, x1, y1 = estado['area_recorte']
         glColor3f(0.5, 0.5, 0.8)
@@ -800,6 +812,7 @@ def redibujar_todo(estado):
         glEnd()
         glDisable(GL_BLEND)
     
+    # Dibuja el área de recorte temporal
     if estado['area_recorte_temporal'] and len(estado['area_recorte_temporal']) == 1:
         x0, y0 = estado['area_recorte_temporal'][0]
         x1, y1 = pygame.mouse.get_pos()
@@ -812,6 +825,7 @@ def redibujar_todo(estado):
         glVertex2f(x0, y1)
         glEnd()
     
+    # Dibuja la barra de herramientas
     dibujar_barra_herramientas(estado)
     pygame.display.flip()
     return estado
@@ -820,10 +834,8 @@ def redibujar_todo(estado):
 def calcular_curva_lagrange(puntos_control, segmentos=100):
     if len(puntos_control) != 3:
         return []
-    
     p0, p1, p2 = puntos_control
     curva = []
-    
     for i in range(segmentos + 1):
         t = i / segmentos
         x = (1-t)**2 * p0[0] + 2*(1-t)*t * p1[0] + t**2 * p2[0]
