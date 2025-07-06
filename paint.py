@@ -8,7 +8,7 @@ from OpenGL.GL import *
 from OpenGL.GLU import *
 import math # Importar para el dibujo delm circulo
 import numpy as np # Importar numpy para operaciones con matrices
-import ventana_3D # Importar la ventana 3D para usarla en el paint
+from ventana_3D import abrir_ventana_3d # Importar la ventana 3D para usarla en el paint
 from numpy.linalg import inv
 
 # Constantes
@@ -886,7 +886,11 @@ def main():
                             estado['herramienta_actual'] = herramienta
                             if herramienta == "ventana3d":
                                 try:
-                                    ventana_3D.abrir_ventana_3d()
+                                    abrir_ventana_3d()
+                                    pygame.display.quit()
+                                    pygame.display.init()
+                                    estado = inicializar_pygame(1000, 600)
+                                    estado = redibujar_todo(estado)
                                 except Exception as e:
                                     print(f"Error al abrir ventana 3D: {e}")
                             elif herramienta != "recortar":
