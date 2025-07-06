@@ -5,7 +5,6 @@ from OpenGL.GLU import *
 from OpenGL.GLUT import *
 from OpenGL.GLUT import GLUT_BITMAP_9_BY_15
 import sys
-import math
 
 salir_ventana = False  # bandera para indicar si se debe salir sin cerrar el programa
 ventana_activa=True
