@@ -1,14 +1,14 @@
-#Proyecto Paint con OpenGL y Pygame
+# Proyecto Paint con OpenGL y Pygame
 # Computacion Grafica - ESPE
 
-#Importaciones necesarias
+# Importaciones necesarias
 import pygame
 from pygame.locals import *
 from OpenGL.GL import *
 from OpenGL.GLU import *
-import math # Importar para el dibujo delm circulo
-import numpy as np # Importar numpy para operaciones con matrices
-from ventana_3D import abrir_ventana_3d # Importar la ventana 3D para usarla en el paint
+import math  # Importar para el dibujo del circulo
+import numpy as np  # Importar numpy para operaciones con matrices
+from ventana_3D import abrir_ventana_3d  # Importar la ventana 3D para usarla en el paint
 from numpy.linalg import inv
 
 # Constantes
@@ -116,7 +116,7 @@ def establecer_color(estado, r, g, b):
     estado['color_actual'] = (r/255.0, g/255.0, b/255.0)
     return estado
 
-#Establacer los pixeles de las figuras
+# Establacer los pixeles de las figuras
 def dibujar_pixel(estado, x, y, almacenar=True, color=None, tamanho=None):
     if color is None:
         color = estado['color_actual']
@@ -132,7 +132,7 @@ def dibujar_pixel(estado, x, y, almacenar=True, color=None, tamanho=None):
     glPointSize(1)
     return estado
 
-#Borrar en un area los pixeles
+# Borrar en un area los pixeles
 def borrar_en(estado, x, y):
     mitad = estado['tamanho_borrador'] // 2
     estado['pixeles_almacenados'] = [
@@ -160,7 +160,7 @@ def borrar_en(estado, x, y):
     ]
     return estado
 
-#Dibujar una linea con Bresenham
+# Dibujar una linea con Bresenham
 def dibujar_linea_bresenham(estado, x0, y0, x1, y1, almacenar=True):
     if almacenar:
         estado['lineas_almacenadas'].append((x0, y0, x1, y1, estado['color_actual'], estado['grosor_linea']))
@@ -195,7 +195,7 @@ def dibujar_linea_bresenham(estado, x0, y0, x1, y1, almacenar=True):
     glPointSize(1)
     return estado
 
-#Dibujar un circulo con puntos y parametrizacion con angulos
+# Dibujar un circulo con puntos y parametrizacion con angulos
 def dibujar_circulo(estado, cx, cy, radio, segmentos=100, almacenar=True):
     if almacenar:
         estado['circulos_almacenados'].append((cx, cy, radio, estado['color_actual'], estado['grosor_linea']))
@@ -212,7 +212,7 @@ def dibujar_circulo(estado, cx, cy, radio, segmentos=100, almacenar=True):
     glPointSize(1)
     return estado
 
-#Dibujar un rectangulo funcion deshabilidada
+# Dibujar un rectangulo funcion deshabilidada
 def dibujar_rectangulo(estado, x0, y0, x1, y1, almacenar=True):
     if almacenar:
         estado['rectangulos_almacenados'].append((x0, y0, x1, y1, estado['color_actual'], estado['grosor_linea']))
@@ -227,7 +227,7 @@ def dibujar_rectangulo(estado, x0, y0, x1, y1, almacenar=True):
     glLineWidth(1)
     return estado
 
-#Codigo de Cohen-Sutherland
+# Codigo de Cohen-Sutherland
 def calcular_codigo(x, y, rectangulo_recorte):
     codigo = DENTRO
     if x < rectangulo_recorte[0]:
@@ -240,7 +240,7 @@ def calcular_codigo(x, y, rectangulo_recorte):
         codigo |= ARRIBA
     return codigo
 
-#Funcion de recorte (algoritmo de cohen-sutherland)
+# Funcion de recorte (algoritmo de cohen-sutherland)
 def recortar_linea_cohen_sutherland(x0, y0, x1, y1, rectangulo_recorte):
     codigo0 = calcular_codigo(x0, y0, rectangulo_recorte)
     codigo1 = calcular_codigo(x1, y1, rectangulo_recorte)
@@ -279,7 +279,7 @@ def recortar_linea_cohen_sutherland(x0, y0, x1, y1, rectangulo_recorte):
         return (x0, y0, x1, y1)
     return None
 
-#Funciones para verificar los puntos que hay en las figuras
+# Funciones para verificar los puntos que hay en las figuras
 def punto_en_circulo(punto, centro, radio):
     distancia = math.hypot(punto[0] - centro[0], punto[1] - centro[1])
     return distancia <= radio
@@ -308,7 +308,7 @@ def punto_en_linea(punto, linea, umbral=5):
     distancia = math.hypot(x - proy_x, y - proy_y)
     return distancia <= umbral
 
-#Seleccionar una figura en el area de recorte 
+# Seleccionar una figura en el area de recorte 
 def seleccionar_figura(estado, x, y):
     for i, circulo in enumerate(estado['circulos_almacenados']):
         cx, cy, radio, color, grosor = circulo
@@ -333,7 +333,7 @@ def seleccionar_figura(estado, x, y):
     
     return None
 
-#Funcion de rotar en base a la matriz de transformacion segun el tipo de figura
+# Funcion de rotar en base a la matriz de transformacion segun el tipo de figura
 # Se aplica una matriz de rotación en base al centro de la figura
 def rotar_figura(estado, angulo):
     if not estado['figura_seleccionada']:
@@ -398,7 +398,7 @@ def rotar_figura(estado, angulo):
     
     return estado
 
-#Escala la figura seleccionada dependiento de la figura
+# Escala la figura seleccionada dependiento de la figura
 # Se aplica una matriz de escala en base al centro de la figura
 # y se actualizan las coordenadas de la figura almacenada
 def escalar_figura(estado, factor):
@@ -457,7 +457,7 @@ def escalar_figura(estado, factor):
     
     return estado
 
-#Se aplica el recorte a las figuras y dependiedo de la figura se recorta de diferente manera
+# Se aplica el recorte a las figuras y dependiedo de la figura se recorta de diferente manera
 def aplicar_recorte(estado):
     if not estado['area_recorte']:
         return estado
@@ -525,19 +525,20 @@ def aplicar_recorte(estado):
     return estado
 
 def dibujar_icono(herramienta, x):
-    if herramienta == "lapiz": # Icono de lápiz
+    if herramienta == "lapiz":  # Icono de lápiz
         glColor3f(0, 0, 0)
         glLineWidth(2)
         glBegin(GL_POINTS)
-        glVertex2f(x + 8, 30)#; glVertex2f(x + 22, 15)
+        glVertex2f(x + 8, 30)  # ; glVertex2f(x + 22, 15)
         glEnd()
-    elif herramienta == "linea": # Icono de línea
+    elif herramienta == "linea":  # Icono de línea
         glColor3f(0, 0, 0)
         glLineWidth(2)
         glBegin(GL_LINES)
-        glVertex2f(x + 5, 30); glVertex2f(x + 25, 10)
+        glVertex2f(x + 5, 30)
+        glVertex2f(x + 25, 10)
         glEnd()
-    elif herramienta == "circulo": # Icono de círculo
+    elif herramienta == "circulo":  # Icono de círculo
         glColor3f(0, 0, 0)
         glLineWidth(2)
         glBegin(GL_LINE_LOOP)
@@ -545,7 +546,7 @@ def dibujar_icono(herramienta, x):
             angulo = 2 * math.pi * i / 20
             glVertex2f(x + 15 + 10 * math.cos(angulo), 20 + 10 * math.sin(angulo))
         glEnd()
-    elif herramienta == "curva":   # Icono de curva
+    elif herramienta == "curva":  # Icono de curva
         glColor3f(0, 0, 0)
         glLineWidth(2)
         glBegin(GL_LINE_STRIP)
@@ -557,25 +558,29 @@ def dibujar_icono(herramienta, x):
             yt = (1 - t) ** 2 * y0 + 2 * (1 - t) * t * y1 + t ** 2 * y2
             glVertex2f(xt, yt)
         glEnd()
-    elif herramienta == "borrador": # Icono de borrador
+    elif herramienta == "borrador":  # Icono de borrador
         glColor3f(1, 1, 1)
         glRecti(x + 7, 13, x + 23, 29)
         glColor3f(0, 0, 0)
         glLineWidth(1)
         glBegin(GL_LINE_LOOP)
-        glVertex2f(x + 7, 13); glVertex2f(x + 23, 13)
-        glVertex2f(x + 23, 29); glVertex2f(x + 7, 29)
+        glVertex2f(x + 7, 13)
+        glVertex2f(x + 23, 13)
+        glVertex2f(x + 23, 29)
+        glVertex2f(x + 7, 29)
         glEnd()
-    elif herramienta == "rectangulo": # Icono de rectángulo
+    elif herramienta == "rectangulo":  # Icono de rectángulo
         glColor3f(0.7, 0.7, 0.9)
         glRecti(x + 8, 12, x + 22, 28)
         glColor3f(0, 0, 0)
         glLineWidth(2)
         glBegin(GL_LINE_LOOP)
-        glVertex2f(x + 8, 12); glVertex2f(x + 22, 12)
-        glVertex2f(x + 22, 28); glVertex2f(x + 8, 28)
+        glVertex2f(x + 8, 12)
+        glVertex2f(x + 22, 12)
+        glVertex2f(x + 22, 28)
+        glVertex2f(x + 8, 28)
         glEnd()
-    elif herramienta == "recortar": # Icono de recorte
+    elif herramienta == "recortar":  # Icono de recorte
         glColor3f(0.7, 0.7, 0.9)
         glRecti(x + 5, 10, x + 25, 30)
         glColor3f(1, 1, 1)
@@ -583,15 +588,21 @@ def dibujar_icono(herramienta, x):
         glColor3f(0, 0, 0)
         glLineWidth(1)
         glBegin(GL_LINE_LOOP)
-        glVertex2f(x + 5, 10); glVertex2f(x + 25, 10)
-        glVertex2f(x + 25, 30); glVertex2f(x + 5, 30)
+        glVertex2f(x + 5, 10)
+        glVertex2f(x + 25, 10)
+        glVertex2f(x + 25, 30)
+        glVertex2f(x + 5, 30)
         glEnd()
         glLineWidth(2)
         glBegin(GL_LINES)
-        glVertex2f(x + 7, 12); glVertex2f(x + 13, 18)
-        glVertex2f(x + 23, 12); glVertex2f(x + 17, 18)
-        glVertex2f(x + 13, 18); glVertex2f(x + 15, 20)
-        glVertex2f(x + 17, 18); glVertex2f(x + 15, 20)
+        glVertex2f(x + 7, 12)
+        glVertex2f(x + 13, 18)
+        glVertex2f(x + 23, 12)
+        glVertex2f(x + 17, 18)
+        glVertex2f(x + 13, 18)
+        glVertex2f(x + 15, 20)
+        glVertex2f(x + 17, 18)
+        glVertex2f(x + 15, 20)
         glEnd()
     elif herramienta == SELECCIONAR:
         glColor3f(0.7, 0.7, 0.9)
@@ -599,9 +610,12 @@ def dibujar_icono(herramienta, x):
         glColor3f(0, 0, 0)
         glLineWidth(2)
         glBegin(GL_LINES)
-        glVertex2f(x + 8, 25); glVertex2f(x + 15, 15)
-        glVertex2f(x + 15, 15); glVertex2f(x + 22, 25)
-        glVertex2f(x + 15, 15); glVertex2f(x + 15, 30)
+        glVertex2f(x + 8, 25)
+        glVertex2f(x + 15, 15)
+        glVertex2f(x + 15, 15)
+        glVertex2f(x + 22, 25)
+        glVertex2f(x + 15, 15)
+        glVertex2f(x + 15, 30)
         glEnd()
     elif herramienta == "ventana3d":
         # Icono 3D mejorado
@@ -611,22 +625,34 @@ def dibujar_icono(herramienta, x):
         glLineWidth(2)
         glBegin(GL_LINES)
         # Cubo en perspectiva
-        glVertex2f(x + 10, 15); glVertex2f(x + 20, 15)  # Línea frontal inferior
-        glVertex2f(x + 20, 15); glVertex2f(x + 20, 25)  # Línea frontal derecha
-        glVertex2f(x + 20, 25); glVertex2f(x + 10, 25)  # Línea frontal superior
-        glVertex2f(x + 10, 25); glVertex2f(x + 10, 15)  # Línea frontal izquierda
+        glVertex2f(x + 10, 15)
+        glVertex2f(x + 20, 15)  # Línea frontal inferior
+        glVertex2f(x + 20, 15)
+        glVertex2f(x + 20, 25)  # Línea frontal derecha
+        glVertex2f(x + 20, 25)
+        glVertex2f(x + 10, 25)  # Línea frontal superior
+        glVertex2f(x + 10, 25)
+        glVertex2f(x + 10, 15)  # Línea frontal izquierda
         
         # Líneas de profundidad
-        glVertex2f(x + 10, 15); glVertex2f(x + 13, 12)
-        glVertex2f(x + 20, 15); glVertex2f(x + 23, 12)
-        glVertex2f(x + 20, 25); glVertex2f(x + 23, 22)
-        glVertex2f(x + 10, 25); glVertex2f(x + 13, 22)
+        glVertex2f(x + 10, 15)
+        glVertex2f(x + 13, 12)
+        glVertex2f(x + 20, 15)
+        glVertex2f(x + 23, 12)
+        glVertex2f(x + 20, 25)
+        glVertex2f(x + 23, 22)
+        glVertex2f(x + 10, 25)
+        glVertex2f(x + 13, 22)
         
         # Líneas traseras
-        glVertex2f(x + 13, 12); glVertex2f(x + 23, 12)
-        glVertex2f(x + 23, 12); glVertex2f(x + 23, 22)
-        glVertex2f(x + 23, 22); glVertex2f(x + 13, 22)
-        glVertex2f(x + 13, 22); glVertex2f(x + 13, 12)
+        glVertex2f(x + 13, 12)
+        glVertex2f(x + 23, 12)
+        glVertex2f(x + 23, 12)
+        glVertex2f(x + 23, 22)
+        glVertex2f(x + 23, 22)
+        glVertex2f(x + 13, 22)
+        glVertex2f(x + 13, 22)
+        glVertex2f(x + 13, 12)
         glEnd()
 
 # Dibuja la barra de herramientas con los iconos de las herramientas
@@ -647,8 +673,8 @@ def dibujar_barra_herramientas(estado):
     glEnd()
     
     # Lista de herramientas actualizada con ventana3d
-    herramientas = ["lapiz", "linea", "circulo", "curva", "borrador", 
-                   "rectangulo", "recortar", "ventana3d", SELECCIONAR,]
+    herramientas = ["lapiz", "linea", "circulo", "curva", "borrador",
+                   "rectangulo", "recortar", "ventana3d", SELECCIONAR]
     
     # Calcula espaciado dinámico
     espaciado = min(40, (estado['ancho'] - 20) // len(herramientas))
@@ -662,9 +688,10 @@ def dibujar_barra_herramientas(estado):
         glRecti(x, 5, x + espaciado - 12, 35)
         dibujar_icono(herramienta, x)
 
-    # Colores
+    # Colores - Posición fija después de los botones de herramientas
     colores = [(255, 0, 0), (0, 255, 0), (0, 0, 255), (0, 0, 0), (255, 255, 255)]
-    colores_x=10+len(herramientas)*40+300
+    colores_x = 10 + len(herramientas) * espaciado + 10  # Posición después de los botones de herramientas
+    
     for i, (r, g, b) in enumerate(colores):
         cx = colores_x + i * 35  # Posición de cada color
         glColor3f(r / 255.0, g / 255.0, b / 255.0)
@@ -672,36 +699,38 @@ def dibujar_barra_herramientas(estado):
         glColor3f(0.3, 0.3, 0.3)    # Color del borde (negro/gris)
         glLineWidth(1)
         glBegin(GL_LINE_LOOP)          # Dibuja el borde
-        glVertex2f(cx, 5); glVertex2f(cx + 30, 5)
-        glVertex2f(cx + 30, 35); glVertex2f(cx, 35)
+        glVertex2f(cx, 5)
+        glVertex2f(cx + 30, 5)
+        glVertex2f(cx + 30, 35)
+        glVertex2f(cx, 35)
         glEnd()
 
     # Texto de información
     glColor3f(0.2, 0.2, 0.2)
-    glRasterPos2f(470, 25)
+    glRasterPos2f(colores_x + len(colores) * 35 + 20, 25)
     texto = f"Grosor: {estado['grosor_linea']} (T/Shift+G para cambiar)"
     for char in texto:
         pygame.font.init()
         fuente = pygame.font.SysFont('Arial', 12)
         superficie_texto = fuente.render(char, True, (50, 50, 50))
         datos_textura = pygame.image.tostring(superficie_texto, "RGBA", True)
-        glDrawPixels(superficie_texto.get_width(), superficie_texto.get_height(), 
+        glDrawPixels(superficie_texto.get_width(), superficie_texto.get_height(),
                     GL_RGBA, GL_UNSIGNED_BYTE, datos_textura)
         glRasterPos2f(glGetDoublev(GL_CURRENT_RASTER_POSITION)[0] + superficie_texto.get_width(), 25)
 
     if estado['figura_seleccionada']:
         glColor3f(0.2, 0.2, 0.2)
-        glRasterPos2f(470, 10)
+        glRasterPos2f(colores_x + len(colores) * 35 + 20, 10)
         texto = "R: Rotar | S: Escalar | Shift: Invertir"
         for char in texto:
             fuente = pygame.font.SysFont('Arial', 12)
             superficie_texto = fuente.render(char, True, (50, 50, 50))
             datos_textura = pygame.image.tostring(superficie_texto, "RGBA", True)
-            glDrawPixels(superficie_texto.get_width(), superficie_texto.get_height(), 
+            glDrawPixels(superficie_texto.get_width(), superficie_texto.get_height(),
                         GL_RGBA, GL_UNSIGNED_BYTE, datos_textura)
             glRasterPos2f(glGetDoublev(GL_CURRENT_RASTER_POSITION)[0] + superficie_texto.get_width(), 10)
 
-#Vuelve a dibujar todo
+# Vuelve a dibujar todo
 def redibujar_todo(estado):
     glClearColor(1, 1, 1, 1)
     glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT)
@@ -801,14 +830,22 @@ def redibujar_todo(estado):
         glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA)
         glColor4f(0.7, 0.7, 0.9, 0.3)
         glBegin(GL_QUADS)
-        glVertex2f(0, 0); glVertex2f(estado['ancho'], 0)
-        glVertex2f(estado['ancho'], y0); glVertex2f(0, y0)
-        glVertex2f(0, y0); glVertex2f(x0, y0)
-        glVertex2f(x0, y1); glVertex2f(0, y1)
-        glVertex2f(x1, y0); glVertex2f(estado['ancho'], y0)
-        glVertex2f(estado['ancho'], y1); glVertex2f(x1, y1)
-        glVertex2f(0, y1); glVertex2f(estado['ancho'], y1)
-        glVertex2f(estado['ancho'], estado['alto']); glVertex2f(0, estado['alto'])
+        glVertex2f(0, 0)
+        glVertex2f(estado['ancho'], 0)
+        glVertex2f(estado['ancho'], y0)
+        glVertex2f(0, y0)
+        glVertex2f(0, y0)
+        glVertex2f(x0, y0)
+        glVertex2f(x0, y1)
+        glVertex2f(0, y1)
+        glVertex2f(x1, y0)
+        glVertex2f(estado['ancho'], y0)
+        glVertex2f(estado['ancho'], y1)
+        glVertex2f(x1, y1)
+        glVertex2f(0, y1)
+        glVertex2f(estado['ancho'], y1)
+        glVertex2f(estado['ancho'], estado['alto'])
+        glVertex2f(0, estado['alto'])
         glEnd()
         glDisable(GL_BLEND)
     
@@ -830,7 +867,7 @@ def redibujar_todo(estado):
     pygame.display.flip()
     return estado
 
-#Algoritmo para dibujar una curva
+# Algoritmo para dibujar una curva
 def calcular_curva_lagrange(puntos_control, segmentos=100):
     if len(puntos_control) != 3:
         return []
@@ -838,14 +875,14 @@ def calcular_curva_lagrange(puntos_control, segmentos=100):
     curva = []
     for i in range(segmentos + 1):
         t = i / segmentos
-        x = (1-t)**2 * p0[0] + 2*(1-t)*t * p1[0] + t**2 * p2[0]
-        y = (1-t)**2 * p0[1] + 2*(1-t)*t * p1[1] + t**2 * p2[1]
+        x = (1 - t) ** 2 * p0[0] + 2 * (1 - t) * t * p1[0] + t ** 2 * p2[0]
+        y = (1 - t) ** 2 * p0[1] + 2 * (1 - t) * t * p1[1] + t ** 2 * p2[1]
         curva.append((x, y))
     return curva
 
-#Funcion principal
+# Funcion principal
 def main():
-    estado = inicializar_pygame(1000,600)
+    estado = inicializar_pygame(1000, 600)
     estado = redibujar_todo(estado)
     ejecutando = True
     while ejecutando:
@@ -889,7 +926,7 @@ def main():
                         if not estado['area_recorte_temporal']:
                             estado['area_recorte_temporal'] = [(x, y)]
                 else:
-                    herramientas = ["lapiz", "linea", "circulo", "curva", "borrador", 
+                    herramientas = ["lapiz", "linea", "circulo", "curva", "borrador",
                                   "rectangulo", "recortar", SELECCIONAR, "ventana3d"]
                     espaciado = min(40, (estado['ancho'] - 20) // len(herramientas))
                     
@@ -910,9 +947,12 @@ def main():
                             if herramienta != SELECCIONAR:
                                 estado['figura_seleccionada'] = None
 
+                    # Manejo de clics en los botones de color
                     colores = [(255, 0, 0), (0, 255, 0), (0, 0, 255), (0, 0, 0), (255, 255, 255)]
+                    colores_x = 10 + len(herramientas) * espaciado + 10
+                    
                     for i, (r, g, b) in enumerate(colores):
-                        if 290 + i * 35 <= x <= 320 + i * 35:
+                        if colores_x + i * 35 <= x <= colores_x + (i + 1) * 35:
                             estado = establecer_color(estado, r, g, b)
 
                     estado['puntos'].clear()
@@ -982,5 +1022,6 @@ def main():
     
     pygame.quit()
 
-#Funcion para iniciar el programa
-main()
+# Funcion para iniciar el programa
+if __name__ == "__main__":
+    main()
