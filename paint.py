@@ -1,5 +1,5 @@
 import pygame
-from pygame.locals import *
+from pygame.locals import *  # <-- Mueve esta línea aquí
 from OpenGL.GL import *
 from OpenGL.GLU import *
 import math
@@ -456,13 +456,14 @@ def aplicar_recorte(estado):
     # Recorte destructivo para curvas (filtra puntos de la curva)
     nuevas_curvas = []
     for puntos_control, color, grosor in estado['curvas_almacenadas']:
-        curva = calcular_curva_lagrange(puntos_control) if len(puntos_control) == 3 else puntos_control
+        curva = calcular_b_spline(puntos_control)
         curva_recortada = [
             (x, y) for (x, y) in curva
             if x0 <= x <= x1 and y0 <= y <= y1
         ]
         if curva_recortada:
-            nuevas_curvas.append((puntos_control, color, grosor))  # Mantenemos los puntos de control originales
+            # Guarda los puntos recortados como una curva "plana"
+            nuevas_curvas.append((curva_recortada, color, grosor))
     estado['curvas_almacenadas'] = nuevas_curvas
 
     # Recorte destructivo para círculos (filtra puntos del círculo)
@@ -703,12 +704,11 @@ def redibujar_todo(estado):
             glLineWidth(grosor + 2)
             dibujar_linea_bresenham(estado, x0, y0, x1, y1, almacenar=False)
     
-    # Dibujo de curvas como líneas continuas
     for i, (pts, color, grosor) in enumerate(estado['curvas_almacenadas']):
         glColor3f(*color)
-        glLineWidth(grosor)
-        glBegin(GL_LINE_STRIP)  # Línea continua
-        curva = calcular_curva_lagrange(pts) if len(pts) == 3 else pts
+        glPointSize(grosor)
+        glBegin(GL_POINTS)
+        curva = calcular_b_spline(pts)
         for x, y in curva:
             if not estado['area_recorte'] or (
                 estado['area_recorte'][0] <= x <= estado['area_recorte'][2] and
@@ -716,7 +716,7 @@ def redibujar_todo(estado):
             ):
                 glVertex2f(x, y)
         glEnd()
-        glLineWidth(1)  # Restablecer el grosor de línea
+    glPointSize(1)
 
     for i, datos in enumerate(estado['circulos_almacenados']):
         if len(datos) == 5:
@@ -809,43 +809,6 @@ def redibujar_todo(estado):
     pygame.display.flip()
     return estado
 
-def calcular_curva_lagrange(puntos_control, segmentos=100):
-    """Curva cuadrática que pasa exactamente por 3 puntos usando interpolación de Lagrange"""
-    if len(puntos_control) != 3:
-        return []
-    
-    p0, p1, p2 = puntos_control
-    curva = []
-    
-    for i in range(segmentos + 1):
-        t = i / segmentos
-        # Fórmula de interpolación cuadrática de Lagrange
-        x = (1-t)**2 * p0[0] + 2*(1-t)*t * p1[0] + t**2 * p2[0]
-        y = (1-t)**2 * p0[1] + 2*(1-t)*t * p1[1] + t**2 * p2[1]
-        curva.append((x, y))
-    
-    return curva
-
-"""
-# B-Spline cuadrática (comentada)
-def calcular_b_spline(puntos_control, segmentos=100):
-    # B-Spline cuadrática para 3 puntos de control
-    if len(puntos_control) != 3:
-        return []
-    p0, p1, p2 = puntos_control
-    curva = []
-    for i in range(segmentos + 1):
-        t = i / segmentos
-        # Fórmulas de B-Spline cuadrática
-        b0 = (1 - t) ** 2 / 2
-        b1 = (-2 * t ** 2 + 2 * t + 1) / 2
-        b2 = t ** 2 / 2
-        x = b0 * p0[0] + b1 * p1[0] + b2 * p2[0]
-        y = b0 * p0[1] + b1 * p1[1] + b2 * p2[1]
-        curva.append((x, y))
-    return curva
-
-# Catmull-Rom (comentada)
 def calcular_catmull_rom(puntos_control, segmentos=100):
     # Si solo hay 3 puntos, repetimos el primero y el último para tener 4
     if len(puntos_control) == 3:
@@ -875,7 +838,23 @@ def calcular_catmull_rom(puntos_control, segmentos=100):
         )
         curva.append((x, y))
     return curva
-"""
+
+def calcular_b_spline(puntos_control, segmentos=100):
+    # B-Spline cuadrática para 3 puntos de control
+    if len(puntos_control) != 3:
+        return []
+    p0, p1, p2 = puntos_control
+    curva = []
+    for i in range(segmentos + 1):
+        t = i / segmentos
+        # Fórmulas de B-Spline cuadrática
+        b0 = (1 - t) ** 2 / 2
+        b1 = (-2 * t ** 2 + 2 * t + 1) / 2
+        b2 = t ** 2 / 2
+        x = b0 * p0[0] + b1 * p1[0] + b2 * p2[0]
+        y = b0 * p0[1] + b1 * p1[1] + b2 * p2[1]
+        curva.append((x, y))
+    return curva
 
 def abrir_ventana_3d():
     ancho, alto = 600, 500
@@ -1009,7 +988,7 @@ def main():
         for evento in pygame.event.get():
             if evento.type == pygame.QUIT:
                 ejecutando = False
-            
+            # ...existing code...
             elif evento.type == pygame.MOUSEBUTTONDOWN:
                 x, y = evento.pos
                 if y > 40:
@@ -1033,9 +1012,8 @@ def main():
                             estado = redibujar_todo(estado)
                     elif estado['herramienta_actual'] == "curva":
                         estado['puntos_control'].append((x, y))
-                        if len(estado['puntos_control']) == 3:  # Usamos 3 puntos para Lagrange
-                            curva = calcular_curva_lagrange(estado['puntos_control'])
-                            estado['curvas_almacenadas'].append((curva, estado['color_actual'], estado['grosor_linea']))
+                        if len(estado['puntos_control']) == 3:
+                            estado['curvas_almacenadas'].append((list(estado['puntos_control']), estado['color_actual'], estado['grosor_linea']))
                             estado['puntos_control'] = []
                             estado = redibujar_todo(estado)
                     elif estado['herramienta_actual'] == SELECCIONAR:
