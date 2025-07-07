@@ -79,9 +79,9 @@ def matriz_sombra(luz, plano=(0.0, 1.0, 0.0, 0.0)):
 def dibujar_ejes():
     glLineWidth(3)
     glBegin(GL_LINES)
-    glColor3f(1, 0, 0); glVertex3f(0, 0, 0); glVertex3f(2, 0, 0)
-    glColor3f(0, 1, 0); glVertex3f(0, 0, 0); glVertex3f(0, 2, 0)
-    glColor3f(0, 0, 1); glVertex3f(0, 0, 0); glVertex3f(0, 0, 2)
+    glColor3f(1, 0, 0); glVertex3f(0, 0, 0); glVertex3f(2, 0, 0)# Eje X
+    glColor3f(0, 1, 0); glVertex3f(0, 0, 0); glVertex3f(0, 2, 0)# Eje Y
+    glColor3f(0, 0, 1); glVertex3f(0, 0, 0); glVertex3f(0, 0, 2)# Eje Z
     glEnd()
     glLineWidth(1)
 
