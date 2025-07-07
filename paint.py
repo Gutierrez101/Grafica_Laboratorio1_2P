@@ -1,7 +1,7 @@
 # Proyecto Paint con OpenGL y Pygame
 # Computacion Grafica - ESPE
 
-# Importaciones necesarias
+# Importaciones necesarias en el programa
 import pygame
 from pygame.locals import *
 from OpenGL.GL import *
@@ -11,7 +11,8 @@ import numpy as np  # Importar numpy para operaciones con matrices
 from ventana_3D import abrir_ventana_3d  # Importar la ventana 3D para usarla en el paint
 from numpy.linalg import inv
 
-# Constantes
+# Constantes para recortes y la seleccion de figuras
+# Definicion de constantes para el recorte y la seleccion de figuras
 DENTRO = 0
 IZQUIERDA = 1
 DERECHA = 2
@@ -524,6 +525,7 @@ def aplicar_recorte(estado):
     estado['area_recorte'] = None
     return estado
 
+#Dibujar los iconos de las herramientas en la barra lateral
 def dibujar_icono(herramienta, x):
     if herramienta == "lapiz":  # Icono de lápiz
         glColor3f(0, 0, 0)
@@ -604,7 +606,7 @@ def dibujar_icono(herramienta, x):
         glVertex2f(x + 17, 18)
         glVertex2f(x + 15, 20)
         glEnd()
-    elif herramienta == SELECCIONAR:
+    elif herramienta == SELECCIONAR:# Para seleccionar figuras
         glColor3f(0.7, 0.7, 0.9)
         glRecti(x + 5, 5, x + 25, 35)
         glColor3f(0, 0, 0)
@@ -1022,6 +1024,6 @@ def main():
     
     pygame.quit()
 
-# Funcion para iniciar el programa
-if __name__ == "__main__":
-    main()
+
+#Se ejecuta la funcion principal
+main()
