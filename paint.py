@@ -356,7 +356,9 @@ def rotar_figura(estado, angulo):
     
     elif tipo == 'rectangulo':
         x0, y0, x1, y1, color, grosor = estado['rectangulos_almacenados'][indice]
-        centro_x = (x0 + x1) / 2
+        centro_x = (
+            
+        ) / 2
         centro_y = (y0 + y1) / 2
         
         T1 = crear_matriz_traslacion(-centro_x, -centro_y)

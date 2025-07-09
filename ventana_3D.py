@@ -128,7 +128,7 @@ def dibujar_sombra():
     if habilitar_luz:
         glEnable(GL_LIGHTING)
 
-def barra_hud():
+#def barra_hud():
     glMatrixMode(GL_PROJECTION)
     glPushMatrix(); glLoadIdentity(); gluOrtho2D(0, WIDTH, HEIGHT, 0)
     glMatrixMode(GL_MODELVIEW)
@@ -169,7 +169,7 @@ def display():
     dibujar_ejes()
     dibujar_sombra()
     dibujar_objeto()
-    barra_hud()
+    #barra_hud()
     glutSwapBuffers()
 
 def idle():
