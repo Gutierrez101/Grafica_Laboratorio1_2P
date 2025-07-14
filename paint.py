@@ -90,7 +90,9 @@ def inicializar_pygame(ancho, alto):
         'angulo_rotacion': 0,
         'factor_escala': 1.0,
         'modo_transformacion': None,
-        'centro_transformacion': None
+        'centro_transformacion': None,
+        'modo_corazon': None,  # None, 'centro1', 'radio1', 'centro2', 'radio2'
+        'corazon_datos': {},   # Para guardar centros y radios temporales
     }
 
 # Función para dibujar la cuadrícula
@@ -460,7 +462,7 @@ def escalar_figura(estado, factor):
     
     return estado
 
-# Se aplica el recorte a las figuras y dependiedo de la figura se recorta de diferente manera
+# Se aplica el recorte a las figuras y dependiento de la figura se recorta de diferente manera
 def aplicar_recorte(estado):
     if not estado['area_recorte']:
         return estado
@@ -658,6 +660,23 @@ def dibujar_icono(herramienta, x):
         glVertex2f(x + 13, 22)
         glVertex2f(x + 13, 12)
         glEnd()
+    elif herramienta == "ex":
+        glColor3f(0, 0, 0)
+        glLineWidth(2)
+        glBegin(GL_LINE_LOOP)
+        for i in range(20):
+            angulo = 2 * math.pi * i / 20
+            glVertex2f(x + 10 + 8 * math.cos(angulo), 20 + 8 * math.sin(angulo))
+        glEnd()
+        glBegin(GL_LINE_LOOP)
+        for i in range(20):
+            angulo = 2 * math.pi * i / 20
+            glVertex2f(x + 20 + 8 * math.cos(angulo), 20 + 8 * math.sin(angulo))
+        glEnd()
+        glBegin(GL_LINES)
+        glVertex2f(x + 10, 20)
+        glVertex2f(x + 20, 20)
+        glEnd()
 
 # Dibuja la barra de herramientas con los iconos de las herramientas
 def dibujar_barra_herramientas(estado):
@@ -678,7 +697,7 @@ def dibujar_barra_herramientas(estado):
     
     # Lista de herramientas actualizada con ventana3d
     herramientas = ["lapiz", "linea", "circulo", "curva", "borrador",
-                   "rectangulo", "recortar", "ventana3d", SELECCIONAR]
+                    "rectangulo", "recortar", SELECCIONAR, "ventana3d", "ex"]
     
     # Calcula espaciado dinámico
     espaciado = min(40, (estado['ancho'] - 20) // len(herramientas))
@@ -929,13 +948,58 @@ def main():
                     elif estado['herramienta_actual'] == "recortar":
                         if not estado['area_recorte_temporal']:
                             estado['area_recorte_temporal'] = [(x, y)]
+                    if estado.get('modo_corazon'):
+                        if estado['modo_corazon'] == 'centro1':
+                            estado['corazon_datos']['cx1'], estado['corazon_datos']['cy1'] = x, y
+                            estado['modo_corazon'] = 'radio1'
+                            continue
+                        elif estado['modo_corazon'] == 'radio1':
+                            cx1, cy1 = estado['corazon_datos']['cx1'], estado['corazon_datos']['cy1']
+                            radio1 = int(((x - cx1) ** 2 + (y - cy1) ** 2) ** 0.5)
+                            estado['corazon_datos']['radio1'] = radio1
+                            estado['modo_corazon'] = 'centro2'
+                            continue
+                        elif estado['modo_corazon'] == 'centro2':
+                            estado['corazon_datos']['cx2'], estado['corazon_datos']['cy2'] = x, y
+                            estado['modo_corazon'] = 'radio2'
+                            continue
+                        elif estado['modo_corazon'] == 'radio2':
+                            cx2, cy2 = estado['corazon_datos']['cx2'], estado['corazon_datos']['cy2']
+                            radio2 = int(((x - cx2) ** 2 + (y - cy2) ** 2) ** 0.5)
+                            estado['corazon_datos']['radio2'] = radio2
+
+                            # Dibuja los dos círculos
+                            cx1, cy1, radio1 = estado['corazon_datos']['cx1'], estado['corazon_datos']['cy1'], estado['corazon_datos']['radio1']
+                            cx2, cy2, radio2 = estado['corazon_datos']['cx2'], estado['corazon_datos']['cy2'], estado['corazon_datos']['radio2']
+                            estado = dibujar_circulo(estado, cx1, cy1, radio1)
+                            estado = dibujar_circulo(estado, cx2, cy2, radio2)
+                            estado = redibujar_todo(estado)
+
+                            # Recorta la mitad inferior (y > min(cy1, cy2))
+                            y_recorte = min(cy1, cy2)
+                            estado['area_recorte'] = (0, 0, estado['ancho'], y_recorte)
+                            estado = aplicar_recorte(estado)
+                            estado = redibujar_todo(estado)
+
+                            # Dibuja el triángulo inferior (punta del corazón) con Bresenham
+                            x_top = (cx1 + cx2) // 2
+                            y_bottom = max(cy1 + radio1, cy2 + radio2) + 40
+                            estado = dibujar_linea_bresenham(estado, cx1 - radio1, y_recorte, x_top, y_bottom)
+                            estado = dibujar_linea_bresenham(estado, cx2 + radio2, y_recorte, x_top, y_bottom)
+                            estado = redibujar_todo(estado)
+
+                            # Limpia el modo corazón
+                            estado['modo_corazon'] = None
+                            estado['corazon_datos'] = {}
+                            continue
                 else:
                     herramientas = ["lapiz", "linea", "circulo", "curva", "borrador",
-                                  "rectangulo", "recortar", SELECCIONAR, "ventana3d"]
+                                    "rectangulo", "recortar", SELECCIONAR, "ventana3d", "ex"]
                     espaciado = min(40, (estado['ancho'] - 20) // len(herramientas))
-                    
                     for i, herramienta in enumerate(herramientas):
-                        if 10 + i * espaciado <= x <= 10 + (i + 1) * espaciado:
+                        x_btn = 10 + i * espaciado
+                        ancho_btn = espaciado - 12
+                        if x_btn <= x <= x_btn + ancho_btn:
                             estado['herramienta_actual'] = herramienta
                             if herramienta == "ventana3d":
                                 try:
@@ -946,7 +1010,14 @@ def main():
                                     estado = redibujar_todo(estado)
                                 except Exception as e:
                                     print(f"Error al abrir ventana 3D: {e}")
-                            elif herramienta != "recortar":
+                            elif herramienta == "ex":
+                                estado['modo_corazon'] = 'centro1'
+                                estado['corazon_datos'] = {}
+                                estado['herramienta_actual'] = herramienta
+                                estado['puntos'].clear()
+                                estado['puntos_control'].clear()
+                                estado = redibujar_todo(estado)
+                            else:
                                 estado['area_recorte'] = None
                             if herramienta != SELECCIONAR:
                                 estado['figura_seleccionada'] = None
