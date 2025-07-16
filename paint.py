@@ -661,21 +661,24 @@ def dibujar_icono(herramienta, x):
         glVertex2f(x + 13, 12)
         glEnd()
     elif herramienta == "ex":
+        # Dibuja la letra "E" con líneas
         glColor3f(0, 0, 0)
         glLineWidth(2)
-        glBegin(GL_LINE_LOOP)
-        for i in range(20):
-            angulo = 2 * math.pi * i / 20
-            glVertex2f(x + 10 + 8 * math.cos(angulo), 20 + 8 * math.sin(angulo))
-        glEnd()
-        glBegin(GL_LINE_LOOP)
-        for i in range(20):
-            angulo = 2 * math.pi * i / 20
-            glVertex2f(x + 20 + 8 * math.cos(angulo), 20 + 8 * math.sin(angulo))
-        glEnd()
         glBegin(GL_LINES)
-        glVertex2f(x + 10, 20)
-        glVertex2f(x + 20, 20)
+        # Letra E
+        glVertex2f(x + 8, 12)   # vertical
+        glVertex2f(x + 8, 28)
+        glVertex2f(x + 8, 12)   # superior
+        glVertex2f(x + 16, 12)
+        glVertex2f(x + 8, 20)   # medio
+        glVertex2f(x + 15, 20)
+        glVertex2f(x + 8, 28)   # inferior
+        glVertex2f(x + 16, 28)
+        # Letra X
+        glVertex2f(x + 19, 12)
+        glVertex2f(x + 27, 28)
+        glVertex2f(x + 27, 12)
+        glVertex2f(x + 19, 28)
         glEnd()
 
 # Dibuja la barra de herramientas con los iconos de las herramientas
