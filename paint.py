@@ -980,7 +980,7 @@ def main():
 
                             # Recorta la mitad inferior (y > min(cy1, cy2))
                             y_recorte = min(cy1, cy2)
-                            estado['area_recorte'] = (0, 0, estado['ancho'], y_recorte)
+                            estado['area_recorte'] = (0, 0, estado['ancho'], y_recorte+5)
                             estado = aplicar_recorte(estado)
                             estado = redibujar_todo(estado)
 
