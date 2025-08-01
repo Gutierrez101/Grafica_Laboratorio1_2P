@@ -501,16 +501,16 @@ def seleccionar_objeto(x, y):
     # Verificar cámaras (prioridad a selección)
     for i, cam in enumerate(app.camaras):
         distancia = math.sqrt((cam['pos'][0]-pos[0])**2 + 
-                          (cam['pos'][1]-pos[1])**2 + 
-                          (cam['pos'][2]-pos[2])**2)
+                            (cam['pos'][1]-pos[1])**2 + 
+                            (cam['pos'][2]-pos[2])**2)
         if distancia < 0.8:  # Radio de selección más grande
             return 'camara', i
     
     # Verificar luces
     for i, luz in enumerate(app.luces):
         distancia = math.sqrt((luz['pos'][0]-pos[0])**2 + 
-                          (luz['pos'][1]-pos[1])**2 + 
-                          (luz['pos'][2]-pos[2])**2)
+                            (luz['pos'][1]-pos[1])**2 + 
+                            (luz['pos'][2]-pos[2])**2)
         if distancia < 0.8:  # Radio de selección más grande
             return 'luz', i
     
