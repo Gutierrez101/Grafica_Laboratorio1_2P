@@ -8,25 +8,15 @@ import math
 import numpy as np
 
 # Estados de la aplicación
-from OpenGL.GL import *
-from OpenGL.GLU import *
-from OpenGL.GLUT import *
-from OpenGL.GLUT import GLUT_BITMAP_9_BY_15
-import sys
-import math
-import numpy as np
-
-# Estados de la aplicación
 class AppState:
     def __init__(self):
         self.salir_ventana = False
         self.ventana_activa = True
         self.WIDTH, self.HEIGHT = 1200, 800
 
-
-        self.punto_seleccionado=None
-        self.modal_placing=False
-        self.selection_mode=False
+        self.punto_seleccionado = None
+        self.modal_placing = False
+        self.selection_mode = False
 
         self.modo_perspectiva = True
         self.zoom = 1.0
@@ -72,22 +62,21 @@ class AppState:
         self.escalando = False
         
         # Menú contextual
-        self.show_help=False
-        self.panel_luz_visible=False
+        self.show_help = False
+        self.panel_luz_visible = False
         self.menu_contextual_visible = False
         self.menu_pos = (0, 0)
 
-        #Propiedades temporales
-        self.color_luz_temp=[1.0,1.0,1.0,1.0]
-        self.tipo_luz_temp='puntual'
-        self.angulo_spot_temp=45.0
-        self.exponente_spot_temp=2.0
+        # Propiedades temporales
+        self.color_luz_temp = [1.0, 1.0, 1.0, 1.0]
+        self.tipo_luz_temp = 'puntual'
+        self.angulo_spot_temp = 45.0
+        self.exponente_spot_temp = 2.0
         
-
-        #Transformaciones
-        self.centro_transformacion=None
-        self.angulo_rotacion=0
-        self.factor_escala=1.0
+        # Transformaciones
+        self.centro_transformacion = None
+        self.angulo_rotacion = 0
+        self.factor_escala = 1.0
 
         self.opciones_menu = []
 
@@ -210,7 +199,6 @@ def dibujar_menu_contextual():
     glPopMatrix()
     glMatrixMode(GL_MODELVIEW)
 
-
 def procesar_menu_contextual(x, y):
     """Procesa la selección en el menú contextual"""
     if not app.menu_contextual_visible or app.tipo_seleccion != 'luz':
@@ -262,8 +250,7 @@ def procesar_menu_contextual(x, y):
         configurar_luz(app.objeto_seleccionado)
     
     app.menu_contextual_visible = False
-    glutPostRedisplay() 
-
+    glutPostRedisplay()
 
 def dibujar_ejes():
     glLineWidth(3)
@@ -294,8 +281,8 @@ def dibujar_terreno():
     glColor3f(*app.color_lineas)
     glPolygonMode(GL_FRONT_AND_BACK, GL_LINE)
     
-    divisiones=app.divisiones_terreno
-    paso=tamaño/divisiones
+    divisiones = app.divisiones_terreno
+    paso = tamaño / divisiones
 
     # Líneas principales (más gruesas)
     glLineWidth(1.5)
@@ -323,7 +310,6 @@ def dibujar_terreno():
     glLineWidth(1)
     glPolygonMode(GL_FRONT_AND_BACK, GL_FILL)
 
-
 def dibujar_objeto():
     glPolygonMode(GL_FRONT_AND_BACK, GL_LINE if app.modo_visualizacion == "wireframe" else GL_FILL)
     glColor3f(0.8, 0.2, 0.2)
@@ -346,119 +332,106 @@ def dibujar_objeto():
 
 def dibujar_camara(pos, look_at, up, seleccionada=False):
     glPushMatrix()
-    glTranslatef(pos[0], pos[1], pos[2])
+    glTranslatef(*pos)
     
-    # Dibujar cuerpo de la cámara
+    # Orientar cámara hacia look_at
+    dx, dy, dz = look_at[0]-pos[0], look_at[1]-pos[1], look_at[2]-pos[2]
+    angulo = math.degrees(math.atan2(dx, dz))
+    glRotatef(angulo, 0, 1, 0)
+    
+    # Cuerpo (cuadrado 2D)
+    glDisable(GL_LIGHTING)
     glColor3f(0.0, 1.0, 0.0) if seleccionada else glColor3f(0.2, 0.2, 0.8)
-    glutSolidCube(0.5)
     
-    # Dibujar lente
-    glPushMatrix()
-    glTranslatef(0, 0, -0.3)
-    glColor3f(0.8, 0.8, 0.2)
-    glutSolidCone(0.3, 0.5, 10, 10)
-    glPopMatrix()
-    
-    # Dibujar vector de dirección
-    glBegin(GL_LINES)
-    glColor3f(1, 0, 0)
-    glVertex3f(0, 0, 0)
-    glVertex3f(look_at[0]-pos[0], look_at[1]-pos[1], look_at[2]-pos[2])
+    # Dibujar cuadrado (plano XY)
+    glBegin(GL_QUADS)
+    glVertex3f(-0.3, -0.3, 0)
+    glVertex3f(0.3, -0.3, 0)
+    glVertex3f(0.3, 0.3, 0)
+    glVertex3f(-0.3, 0.3, 0)
     glEnd()
     
+    # Dibujar círculo (lente)
+    glColor3f(0.8, 0.8, 0.2)
+    glBegin(GL_TRIANGLE_FAN)
+    glVertex3f(0, 0, -0.1)  # Centro
+    for i in range(33):  # 32 segmentos para el círculo
+        ang = i * 2 * math.pi / 32
+        glVertex3f(0.15 * math.cos(ang), 0.15 * math.sin(ang), -0.1)
+    glEnd()
+    
+    # Línea de visión
+    glColor3f(1, 0, 0)
+    glBegin(GL_LINES)
+    glVertex3f(0, 0, 0)
+    glVertex3f(0, 0, -0.5)
+    glEnd()
+    
+    glEnable(GL_LIGHTING)
     glPopMatrix()
 
 def dibujar_luz(pos, color, tipo, seleccionada=False):
     glDisable(GL_LIGHTING)
-    
-    # Color según selección
-    if seleccionada:
-        glColor3f(1, 1, 0)
-    else:
-        glColor3f(color[0], color[1], color[2])
-    
     glPushMatrix()
-    glTranslatef(pos[0], pos[1], pos[2])
-    
-    # Representación visual según tipo de luz
-    if tipo == 'puntual':
-        glutSolidSphere(0.3, 12, 12)
-        glBegin(GL_LINES)
-        for i in range(12):
-            ang = i * 30 * 3.1416 / 180
-            glVertex3f(0, 0, 0)
-            glVertex3f(0.8 * math.cos(ang), 0.8 * math.sin(ang), 0)
-        glEnd()
-    elif tipo == 'directional':
-        glutSolidSphere(0.2, 10, 10)
-        glBegin(GL_LINES)
+    glTranslatef(*pos[:3])
+    # Esfera
+    glColor3f(1, 1, 0) if seleccionada else glColor3f(*color[:3])
+    glutSolidSphere(0.25, 16, 16)
+    # Líneas radiales
+    glColor3f(1, 1, 0.5)
+    glBegin(GL_LINES)
+    for i in range(12):
+        ang = i * 30 * math.pi / 180
         glVertex3f(0, 0, 0)
-        glVertex3f(0, -1, 0)
-        glEnd()
-    elif tipo == 'spot':
-        glutSolidSphere(0.25, 10, 10)
-        glBegin(GL_LINES)
-        glVertex3f(0, 0, 0)
-        glVertex3f(0, -0.5, 0)
-        glEnd()
-        # Dibujar cono de luz spot
-        glPushMatrix()
-        glRotatef(90, 1, 0, 0)
-        glutWireCone(math.tan(math.radians(app.angulo_spot_temp)), 1.0, 10, 2)
-        glPopMatrix()
-    
+        glVertex3f(0.6 * math.cos(ang), 0.6 * math.sin(ang), 0)
+    glEnd()
     glPopMatrix()
-    if app.habilitar_luz:
-        glEnable(GL_LIGHTING)
+    glEnable(GL_LIGHTING)
 
 def dibujar_barra_herramientas():
-    # Guardar la matriz de proyección actual
     glMatrixMode(GL_PROJECTION)
     glPushMatrix()
     glLoadIdentity()
     gluOrtho2D(0, app.WIDTH, app.HEIGHT, 0)
-    
-    # Guardar la matriz de modelo-vista
     glMatrixMode(GL_MODELVIEW)
     glPushMatrix()
     glLoadIdentity()
-    
-    # Deshabilitar características 3D
     glDisable(GL_DEPTH_TEST)
     glDisable(GL_LIGHTING)
-    
-    # Dibujar fondo de la barra
-    glColor3f(0.1, 0.1, 0.15)
+
+    # Fondo barra
+    glColor3f(0.13, 0.13, 0.16)
     glBegin(GL_QUADS)
     glVertex2f(0, 0)
     glVertex2f(app.WIDTH, 0)
-    glVertex2f(app.WIDTH, 30)
-    glVertex2f(0, 30)
+    glVertex2f(app.WIDTH, 40)
+    glVertex2f(0, 40)
     glEnd()
-    
-    # Dibujar botones (ejemplo para el botón de cámara)
-    herramientas = ["cámara", "luz", "seleccionar"]
-    for i, herramienta in enumerate(herramientas):
-        x = 10 + i * 100
-        glColor3f(0.2, 0.4, 0.8)
+
+    # Botones
+    botones = [
+        ("Seleccionar", 10),
+        ("Cámara", 120),
+        ("Luz", 230),
+        ("Eliminar", 340),
+        ("Vista Cam", 450),
+        ("Vista Libre", 560)
+    ]
+    for nombre, x in botones:
+        glColor3f(0.22, 0.22, 0.32)
         glBegin(GL_QUADS)
-        glVertex2f(x, 5)
-        glVertex2f(x + 90, 5)
-        glVertex2f(x + 90, 25)
-        glVertex2f(x, 25)
+        glVertex2f(x, 8)
+        glVertex2f(x+100, 8)
+        glVertex2f(x+100, 32)
+        glVertex2f(x, 32)
         glEnd()
-        
-        # Texto
         glColor3f(1, 1, 1)
-        glRasterPos2f(x + 10, 15)
-        for char in herramienta:
-            glutBitmapCharacter(GLUT_BITMAP_9_BY_15, ord(char))
-    
-    # Restaurar estado GL
+        glRasterPos2f(x+12, 25)
+        for c in nombre:
+            glutBitmapCharacter(GLUT_BITMAP_9_BY_15, ord(c))
+
     glEnable(GL_DEPTH_TEST)
     glEnable(GL_LIGHTING)
-    
-    # Restaurar matrices
     glPopMatrix()
     glMatrixMode(GL_PROJECTION)
     glPopMatrix()
@@ -660,7 +633,6 @@ def agregar_luz(posicion):
     app.objeto_seleccionado = len(app.luces) - 1
     app.tipo_seleccion = 'luz'
 
-
 def mostrar_coordenadas():
     if app.objeto_seleccionado is not None:
         glMatrixMode(GL_PROJECTION)
@@ -689,7 +661,6 @@ def mostrar_coordenadas():
         glMatrixMode(GL_PROJECTION)
         glPopMatrix()
         glMatrixMode(GL_MODELVIEW)
-
 
 def display():
     glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT)
@@ -744,6 +715,7 @@ def display():
     # Dibujar UI
     dibujar_barra_herramientas()
     dibujar_menu_contextual()
+    dibujar_panel_luz()
     
     # Mostrar coordenadas del objeto seleccionado
     if app.objeto_seleccionado is not None:
@@ -788,11 +760,11 @@ def teclado(key, x, y):
     
     # Transformación de objetos seleccionados
     if app.objeto_seleccionado is not None:
-        if k == 'g':  # Mover
+        if k == 'g':  # Mover (ya implementado con mouse)
             app.dragging = True
         elif k == 'r':  # Rotar
             app.rotando = True
-        elif k == 's':  # Escalar
+        elif k == 'e':  # Escalar
             app.escalando = True
         elif k == 'x':  # Eliminar
             eliminar_objeto_seleccionado()
@@ -813,6 +785,12 @@ def teclado(key, x, y):
         app.modo_visualizacion = "wireframe" if app.modo_visualizacion == "solido" else "solido"
     elif k == '1':  # Luces
         app.habilitar_luz = not app.habilitar_luz
+    
+    # Cambiar vista a cámara seleccionada
+    if k == 'f' and app.tipo_seleccion == 'camara' and app.objeto_seleccionado is not None:
+        app.camara_actual = app.objeto_seleccionado
+    elif k == 'v':
+        app.camara_actual = None  # Vista libre
     
     glutPostRedisplay()
 
@@ -857,16 +835,24 @@ def mouse(btn, estado, x, y):
     # Clic izquierdo normal (para herramientas)
     elif btn == GLUT_LEFT_BUTTON and estado == GLUT_DOWN and not app.modal_placing:
         # Verificar clic en barra de herramientas
-        if y < 30:
-            if 10 <= x <= 150:  # Botón Cámara
-                app.modo_edicion = 'colocar_camara'
-                app.modal_placing = True
-            elif 160 <= x <= 300:  # Botón Luz
-                app.modo_edicion = 'colocar_luz'
-                app.modal_placing = True
-            elif 310 <= x <= 450:  # Botón Seleccionar
+        if y < 40:
+            if 10 <= x <= 110:  # Botón Seleccionar
                 app.selection_mode = True
                 app.modal_placing = False
+            elif 120 <= x <= 220:  # Botón Cámara
+                app.modo_edicion = 'colocar_camara'
+                app.modal_placing = True
+            elif 230 <= x <= 330:  # Botón Luz
+                app.modo_edicion = 'colocar_luz'
+                app.modal_placing = True
+            elif 340 <= x <= 440:  # Botón Eliminar
+                if app.objeto_seleccionado is not None:
+                    eliminar_objeto_seleccionado()
+            elif 450 <= x <= 550:  # Botón Vista Cam
+                if app.tipo_seleccion == 'camara' and app.objeto_seleccionado is not None:
+                    app.camara_actual = app.objeto_seleccionado
+            elif 560 <= x <= 660:  # Botón Vista Libre
+                app.camara_actual = None
             glutPostRedisplay()
             return
         
@@ -903,54 +889,6 @@ def mouse(btn, estado, x, y):
             app.panel_luz_visible = False
         glutPostRedisplay()
         return
-    
-    # Modo colocar cámara
-    if app.modo_edicion == 'colocar_camara':
-        pos = obtener_posicion_3d(x, y)
-        if pos:
-            nueva_camara = {
-                'pos': [pos[0], pos[1], pos[2]],
-                'look_at': [pos[0], pos[1], pos[2]-1],
-                'up': [0.0, 1.0, 0.0]
-            }
-            app.camaras.append(nueva_camara)
-            app.objeto_seleccionado = len(app.camaras) - 1
-            app.tipo_seleccion = 'camara'
-            glutPostRedisplay()
-        return
-    
-    # Modo colocar luz
-    if app.modo_edicion == 'colocar_luz':
-        pos = obtener_posicion_3d(x, y)
-        if pos:
-            nueva_luz = {
-                'pos': [pos[0], pos[1], pos[2], 1.0],
-                'color': [1.0, 1.0, 1.0, 1.0],
-                'tipo': GL_LIGHT0 + len(app.luces) if (GL_LIGHT0 + len(app.luces)) <= GL_LIGHT7 else GL_LIGHT0,
-                'activa': True,
-                'tipo_luz': 'puntual',
-                'angulo_spot': 45.0,
-                'exponente_spot': 2.0,
-                'direccion': [0.0, -1.0, 0.0]
-            }
-            app.luces.append(nueva_luz)
-            app.objeto_seleccionado = len(app.luces) - 1
-            app.tipo_seleccion = 'luz'
-            glutPostRedisplay()
-        return
-    
-    # Modo selección
-    if app.modo_edicion == 'seleccionar' or app.modo_edicion is None:
-        tipo, idx = seleccionar_objeto(x, y)
-        if tipo is not None:
-            app.tipo_seleccion = tipo
-            app.objeto_seleccionado = idx
-            app.dragging = True
-        else:
-            app.objeto_seleccionado = None
-            app.tipo_seleccion = None
-        glutPostRedisplay()
-        return
 
 def motion(x, y):
     dx = x - app.mouse_anterior[0]
@@ -975,7 +913,7 @@ def motion(x, y):
         return
     
     # Rotación de la vista (si no hay objeto seleccionado)
-    if app.objeto_seleccionado is None:
+    if app.objeto_seleccionado is None and app.camara_actual is None:
         app.angulo_y += dx * 0.5
         app.angulo_x -= dy * 0.5
         glutPostRedisplay()
