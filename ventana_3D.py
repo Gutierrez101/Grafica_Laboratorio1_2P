@@ -26,7 +26,6 @@ class AppState:
 
         self.habilitar_luz = True
         self.habilitar_sombra = True
-        self.modo_dibujo = "cubo"
         self.modo_visualizacion = "solido"
         
         # Terreno
@@ -35,25 +34,13 @@ class AppState:
         self.color_terreno = (0.2, 0.25, 0.3)  # Color azul-grisáceo
         self.color_lineas = (0.4, 0.4, 0.4)    # Color gris para las líneas
         
-        # Cámaras
+        # Objetos 3D
+        self.objetos = []
         self.camaras = []
-        self.camara_actual = None
+        self.luces = []
+        self.cubos = []
         
-        # Luces
-        self.luces = [{
-            'pos': [2.0, 5.0, 2.0, 1.0],
-            'color': [1.0, 1.0, 1.0, 1.0],
-            'tipo': GL_LIGHT0,
-            'activa': True,
-            'tipo_luz': 'puntual',
-            'angulo_spot': 45.0,
-            'exponente_spot': 2.0,
-            'direccion': [0.0, -1.0, 0.0]
-        }]
-        self.luz_actual = 0
-        
-        # Modos de edición
-        self.modo_edicion = None
+        # Selección
         self.objeto_seleccionado = None
         self.tipo_seleccion = None
         self.mouse_anterior = (0, 0)
@@ -61,24 +48,27 @@ class AppState:
         self.rotando = False
         self.escalando = False
         
+        # Transformaciones
+        self.centro_transformacion = None
+        self.angulo_rotacion = 0
+        self.factor_escala = 1.0
+
         # Menú contextual
         self.show_help = False
         self.panel_luz_visible = False
         self.menu_contextual_visible = False
         self.menu_pos = (0, 0)
+        self.opciones_menu = []
 
         # Propiedades temporales
         self.color_luz_temp = [1.0, 1.0, 1.0, 1.0]
         self.tipo_luz_temp = 'puntual'
         self.angulo_spot_temp = 45.0
         self.exponente_spot_temp = 2.0
-        
-        # Transformaciones
-        self.centro_transformacion = None
-        self.angulo_rotacion = 0
-        self.factor_escala = 1.0
 
-        self.opciones_menu = []
+        # Cámara actual
+        self.camara_actual = None
+        self.luz_actual = 0
 
 app = AppState()
 
@@ -144,6 +134,40 @@ def mostrar_menu_contextual_luz(x, y):
     # Eliminar opciones vacías
     app.opciones_menu = [op for op in app.opciones_menu if op]
 
+def procesar_menu_contextual(x, y):
+    """Procesa la selección en el menú contextual"""
+    if not app.menu_contextual_visible or app.tipo_seleccion != 'luz':
+        return
+    
+    x_click, y_click = x, app.HEIGHT - y
+    menu_x, menu_y = app.menu_pos
+    ancho = 200
+    alto = 30 * len(app.opciones_menu)
+    
+    # Verificar si el clic fue dentro del menú
+    if not (menu_x <= x_click <= menu_x + ancho and 
+            menu_y - alto <= y_click <= menu_y):
+        return
+    
+    # Determinar qué opción se seleccionó
+    opcion_idx = (y_click - (menu_y - alto)) // 30
+    if opcion_idx < 0 or opcion_idx >= len(app.opciones_menu):
+        return
+    
+    luz = app.luces[app.objeto_seleccionado]
+    opcion = app.opciones_menu[opcion_idx]
+    
+    if "Cambiar color" in opcion:
+        luz['color'] = [np.random.random() for _ in range(3)] + [1.0]
+        configurar_luz(app.objeto_seleccionado)
+    elif "Activar" in opcion or "Desactivar" in opcion:
+        luz['activa'] = not luz['activa']
+        configurar_luz(app.objeto_seleccionado)
+    
+    app.menu_contextual_visible = False
+    glutPostRedisplay()
+
+
 def dibujar_menu_contextual():
     """Dibuja el menú contextual en pantalla"""
     if not app.menu_contextual_visible:
@@ -198,59 +222,6 @@ def dibujar_menu_contextual():
     glMatrixMode(GL_PROJECTION)
     glPopMatrix()
     glMatrixMode(GL_MODELVIEW)
-
-def procesar_menu_contextual(x, y):
-    """Procesa la selección en el menú contextual"""
-    if not app.menu_contextual_visible or app.tipo_seleccion != 'luz':
-        return
-    
-    x_click, y_click = x, app.HEIGHT - y
-    menu_x, menu_y = app.menu_pos
-    ancho = 200
-    alto = 30 * len(app.opciones_menu)
-    
-    # Verificar si el clic fue dentro del menú
-    if not (menu_x <= x_click <= menu_x + ancho and 
-            menu_y - alto <= y_click <= menu_y):
-        return
-    
-    # Determinar qué opción se seleccionó
-    opcion_idx = (y_click - (menu_y - alto)) // 30
-    if opcion_idx < 0 or opcion_idx >= len(app.opciones_menu):
-        return
-    
-    luz = app.luces[app.objeto_seleccionado]
-    opcion = app.opciones_menu[opcion_idx]
-    
-    if "Tipo:" in opcion:
-        # Cambiar tipo de luz
-        tipos = ['puntual', 'directional', 'spot']
-        current_idx = tipos.index(luz['tipo_luz'])
-        luz['tipo_luz'] = tipos[(current_idx + 1) % len(tipos)]
-        configurar_luz(app.objeto_seleccionado)
-    
-    elif "Cambiar color" in opcion:
-        # Cambiar color aleatorio
-        luz['color'] = [np.random.random() for _ in range(3)] + [1.0]
-        configurar_luz(app.objeto_seleccionado)
-    
-    elif "Ángulo:" in opcion and luz['tipo_luz'] == 'spot':
-        # Aumentar ángulo del spot
-        luz['angulo_spot'] = min(90, luz['angulo_spot'] + 5)
-        configurar_luz(app.objeto_seleccionado)
-    
-    elif "Intensidad:" in opcion:
-        # Ajustar intensidad
-        for i in range(3):
-            luz['color'][i] = min(1.0, luz['color'][i] + 0.1)
-        configurar_luz(app.objeto_seleccionado)
-    
-    elif "Activar" in opcion or "Desactivar" in opcion:
-        luz['activa'] = not luz['activa']
-        configurar_luz(app.objeto_seleccionado)
-    
-    app.menu_contextual_visible = False
-    glutPostRedisplay()
 
 def dibujar_ejes():
     glLineWidth(3)
@@ -310,29 +281,46 @@ def dibujar_terreno():
     glLineWidth(1)
     glPolygonMode(GL_FRONT_AND_BACK, GL_FILL)
 
-def dibujar_objeto():
-    glPolygonMode(GL_FRONT_AND_BACK, GL_LINE if app.modo_visualizacion == "wireframe" else GL_FILL)
-    glColor3f(0.8, 0.2, 0.2)
-    draw = {
-        "cubo": glutSolidCube if app.modo_visualizacion == "solido" else glutWireCube,
-        "esfera": glutSolidSphere if app.modo_visualizacion == "solido" else glutWireSphere,
-        "cono": glutSolidCone if app.modo_visualizacion == "solido" else glutWireCone,
-        "tetera": glutSolidTeapot if app.modo_visualizacion == "solido" else glutWireTeapot,
-        "toro": glutSolidTorus if app.modo_visualizacion == "solido" else glutWireTorus,
-    }[app.modo_dibujo]
-    
-    if app.modo_dibujo == "esfera":
-        draw(1.0, 20, 20)
-    elif app.modo_dibujo == "cono":
-        draw(1.0, 2.0, 20, 20)
-    elif app.modo_dibujo == "toro":
-        draw(0.3, 1.0, 20, 20)
-    else:
-        draw(1.5 if app.modo_dibujo == "cubo" else 1.0)
-
-def dibujar_camara(pos, look_at, up, seleccionada=False):
+def dibujar_cubo(pos, escala=(1,1,1), rotacion=(0,0,0), seleccionado=False):
     glPushMatrix()
     glTranslatef(*pos)
+    glRotatef(rotacion[0], 1, 0, 0)
+    glRotatef(rotacion[1], 0, 1, 0)
+    glRotatef(rotacion[2], 0, 0, 1)
+    glScalef(*escala)
+    
+    if seleccionado:
+        # Dibujar cubo seleccionado (amarillo)
+        glColor3f(1, 1, 0)
+        glPolygonMode(GL_FRONT_AND_BACK, GL_LINE)
+        glLineWidth(3)
+        glutWireCube(1.0)
+        
+        # Dibujar ejes de transformación
+        glDisable(GL_LIGHTING)
+        glBegin(GL_LINES)
+        glColor3f(1, 0, 0); glVertex3f(0, 0, 0); glVertex3f(1.5, 0, 0)  # Eje X
+        glColor3f(0, 1, 0); glVertex3f(0, 0, 0); glVertex3f(0, 1.5, 0)  # Eje Y
+        glColor3f(0, 0, 1); glVertex3f(0, 0, 0); glVertex3f(0, 0, 1.5)  # Eje Z
+        glEnd()
+        glEnable(GL_LIGHTING)
+    else:
+        # Cubo normal (rojo)
+        glColor3f(0.8, 0.2, 0.2)
+        if app.modo_visualizacion == "wireframe":
+            glutWireCube(1.0)
+        else:
+            glutSolidCube(1.0)
+    
+    glPopMatrix()
+
+def dibujar_camara(pos, look_at, up, escala=(1,1,1), rotacion=(0,0,0), seleccionada=False):
+    glPushMatrix()
+    glTranslatef(*pos)
+    glRotatef(rotacion[0], 1, 0, 0)
+    glRotatef(rotacion[1], 0, 1, 0)
+    glRotatef(rotacion[2], 0, 0, 1)
+    glScalef(*escala)
     
     # Orientar cámara hacia look_at
     dx, dy, dz = look_at[0]-pos[0], look_at[1]-pos[1], look_at[2]-pos[2]
@@ -341,7 +329,19 @@ def dibujar_camara(pos, look_at, up, seleccionada=False):
     
     # Cuerpo (cuadrado 2D)
     glDisable(GL_LIGHTING)
-    glColor3f(0.0, 1.0, 0.0) if seleccionada else glColor3f(0.2, 0.2, 0.8)
+    if seleccionada:
+        glColor3f(0.0, 1.0, 0.0)  # Verde para selección
+        glPolygonMode(GL_FRONT_AND_BACK, GL_LINE)
+        glLineWidth(3)
+        
+        # Dibujar ejes de transformación
+        glBegin(GL_LINES)
+        glColor3f(1, 0, 0); glVertex3f(0, 0, 0); glVertex3f(1.5, 0, 0)  # Eje X
+        glColor3f(0, 1, 0); glVertex3f(0, 0, 0); glVertex3f(0, 1.5, 0)  # Eje Y
+        glColor3f(0, 0, 1); glVertex3f(0, 0, 0); glVertex3f(0, 0, 1.5)  # Eje Z
+        glEnd()
+    else:
+        glColor3f(0.2, 0.2, 0.8)  # Azul normal
     
     # Dibujar cuadrado (plano XY)
     glBegin(GL_QUADS)
@@ -370,13 +370,35 @@ def dibujar_camara(pos, look_at, up, seleccionada=False):
     glEnable(GL_LIGHTING)
     glPopMatrix()
 
-def dibujar_luz(pos, color, tipo, seleccionada=False):
-    glDisable(GL_LIGHTING)
+def dibujar_luz(pos, color, tipo, escala=(1,1,1), rotacion=(0,0,0), seleccionada=False):
     glPushMatrix()
     glTranslatef(*pos[:3])
+    glRotatef(rotacion[0], 1, 0, 0)
+    glRotatef(rotacion[1], 0, 1, 0)
+    glRotatef(rotacion[2], 0, 0, 1)
+    glScalef(*escala)
+    
+    glDisable(GL_LIGHTING)
+    if seleccionada:
+        # Luz seleccionada (amarillo brillante)
+        glColor3f(1, 1, 0)
+        glPolygonMode(GL_FRONT_AND_BACK, GL_LINE)
+        glLineWidth(3)
+        glutWireSphere(0.25, 16, 16)
+        
+        # Dibujar ejes de transformación
+        glBegin(GL_LINES)
+        glColor3f(1, 0, 0); glVertex3f(0, 0, 0); glVertex3f(1.5, 0, 0)  # Eje X
+        glColor3f(0, 1, 0); glVertex3f(0, 0, 0); glVertex3f(0, 1.5, 0)  # Eje Y
+        glColor3f(0, 0, 1); glVertex3f(0, 0, 0); glVertex3f(0, 0, 1.5)  # Eje Z
+        glEnd()
+    else:
+        # Luz normal
+        glColor3f(*color[:3])
+    
     # Esfera
-    glColor3f(1, 1, 0) if seleccionada else glColor3f(*color[:3])
     glutSolidSphere(0.25, 16, 16)
+    
     # Líneas radiales
     glColor3f(1, 1, 0.5)
     glBegin(GL_LINES)
@@ -385,8 +407,9 @@ def dibujar_luz(pos, color, tipo, seleccionada=False):
         glVertex3f(0, 0, 0)
         glVertex3f(0.6 * math.cos(ang), 0.6 * math.sin(ang), 0)
     glEnd()
-    glPopMatrix()
+    
     glEnable(GL_LIGHTING)
+    glPopMatrix()
 
 def dibujar_barra_herramientas():
     glMatrixMode(GL_PROJECTION)
@@ -413,9 +436,13 @@ def dibujar_barra_herramientas():
         ("Seleccionar", 10),
         ("Cámara", 120),
         ("Luz", 230),
-        ("Eliminar", 340),
-        ("Vista Cam", 450),
-        ("Vista Libre", 560)
+        ("Cubo", 340),
+        ("Eliminar", 450),
+        ("Vista Cam", 560),
+        ("Vista Libre", 670),
+        ("Mover", 780),
+        ("Rotar", 890),
+        ("Escalar", 1000)
     ]
     for nombre, x in botones:
         glColor3f(0.22, 0.22, 0.32)
@@ -558,13 +585,18 @@ def obtener_posicion_3d(x, y):
     
     winY = float(viewport[3] - y)
     
-    # Obtener posición en el plano Z=0
+    # Obtener posición en el plano Y=0 (terreno)
     pos = gluUnProject(x, winY, 0.0, modelview, projection, viewport)
     if pos:
+        # Limitar posición dentro del terreno
+        pos=list(pos)
+        mitad = app.tamanio_terreno / 2
+        pos[0] = max(-mitad, min(mitad, pos[0]))
+        pos[1] = 0  # Asegurar que está en el terreno
+        pos[2] = max(-mitad, min(mitad, pos[2]))
         return pos
     
-    # Si no funciona, probar con Z=0.5
-    return gluUnProject(x, winY, 0.5, modelview, projection, viewport)
+    return None
 
 def seleccionar_objeto(x, y):
     pos = obtener_posicion_3d(x, y)
@@ -587,6 +619,14 @@ def seleccionar_objeto(x, y):
         if distancia < 0.8:  # Radio de selección más grande
             return 'luz', i
     
+    # Verificar cubos
+    for i, cubo in enumerate(app.cubos):
+        distancia = math.sqrt((cubo['pos'][0]-pos[0])**2 + 
+                            (cubo['pos'][1]-pos[1])**2 + 
+                            (cubo['pos'][2]-pos[2])**2)
+        if distancia < 1.0:  # Radio de selección para cubos
+            return 'cubo', i
+    
     return None, None
 
 def eliminar_objeto_seleccionado():
@@ -608,14 +648,20 @@ def eliminar_objeto_seleccionado():
             elif app.luz_actual is not None and app.luz_actual > app.objeto_seleccionado:
                 app.luz_actual -= 1
     
+    elif app.tipo_seleccion == 'cubo' and app.objeto_seleccionado is not None:
+        if 0 <= app.objeto_seleccionado < len(app.cubos):
+            app.cubos.pop(app.objeto_seleccionado)
+    
     app.objeto_seleccionado = None
     app.tipo_seleccion = None
 
 def agregar_camara(posicion):
     nueva_camara = {
-        'pos': [posicion[0], posicion[1], posicion[2]],
-        'look_at': [posicion[0], posicion[1], posicion[2]-1],
-        'up': [0.0, 1.0, 0.0]
+        'pos': [posicion[0], 0.5, posicion[2]],  # Levantar un poco la cámara del suelo
+        'look_at': [posicion[0], 0.5, posicion[2]-1],  # Mirar hacia adelante
+        'up': [0.0, 1.0, 0.0],
+        'escala': [1.0, 1.0, 1.0],
+        'rotacion': [0.0, 0.0, 0.0]
     }
     app.camaras.append(nueva_camara)
     app.objeto_seleccionado = len(app.camaras) - 1
@@ -623,15 +669,31 @@ def agregar_camara(posicion):
 
 def agregar_luz(posicion):
     nueva_luz = {
-        'pos': [posicion[0], posicion[1], posicion[2], 1.0],
+        'pos': [posicion[0], 1.0, posicion[2], 1.0],  # Elevar un poco la luz
         'color': [1.0, 1.0, 1.0, 1.0],
         'tipo': GL_LIGHT0 + len(app.luces),
         'activa': True,
-        'tipo_luz': 'puntual'
+        'tipo_luz': 'puntual',
+        'angulo_spot': 45.0,
+        'exponente_spot': 2.0,
+        'direccion': [0.0, -1.0, 0.0],
+        'escala': [1.0, 1.0, 1.0],
+        'rotacion': [0.0, 0.0, 0.0]
     }
     app.luces.append(nueva_luz)
     app.objeto_seleccionado = len(app.luces) - 1
     app.tipo_seleccion = 'luz'
+
+def agregar_cubo(posicion):
+    nuevo_cubo = {
+        'pos': [posicion[0], 0.5, posicion[2]],  # Centrar el cubo en el terreno
+        'escala': [1.0, 1.0, 1.0],
+        'rotacion': [0.0, 0.0, 0.0],
+        'color': [0.8, 0.2, 0.2]
+    }
+    app.cubos.append(nuevo_cubo)
+    app.objeto_seleccionado = len(app.cubos) - 1
+    app.tipo_seleccion = 'cubo'
 
 def mostrar_coordenadas():
     if app.objeto_seleccionado is not None:
@@ -650,9 +712,12 @@ def mostrar_coordenadas():
         if app.tipo_seleccion == 'camara':
             pos = app.camaras[app.objeto_seleccionado]['pos']
             texto = f"Cámara: X={pos[0]:.2f} Y={pos[1]:.2f} Z={pos[2]:.2f}"
-        else:
+        elif app.tipo_seleccion == 'luz':
             pos = app.luces[app.objeto_seleccionado]['pos']
             texto = f"Luz: X={pos[0]:.2f} Y={pos[1]:.2f} Z={pos[2]:.2f}"
+        elif app.tipo_seleccion == 'cubo':
+            pos = app.cubos[app.objeto_seleccionado]['pos']
+            texto = f"Cubo: X={pos[0]:.2f} Y={pos[1]:.2f} Z={pos[2]:.2f}"
         
         for char in texto:
             glutBitmapCharacter(GLUT_BITMAP_9_BY_15, ord(char))
@@ -689,16 +754,21 @@ def display():
     # Dibujar escena
     dibujar_terreno()
     dibujar_ejes()
-    dibujar_objeto()
     
     # Dibujar objetos
     for i, cam in enumerate(app.camaras):
         dibujar_camara(cam['pos'], cam['look_at'], cam['up'], 
+                      cam['escala'], cam['rotacion'],
                       app.objeto_seleccionado == i and app.tipo_seleccion == 'camara')
     
     for i, luz in enumerate(app.luces):
         dibujar_luz(luz['pos'], luz['color'], luz['tipo_luz'],
+                   luz['escala'], luz['rotacion'],
                    app.objeto_seleccionado == i and app.tipo_seleccion == 'luz')
+    
+    for i, cubo in enumerate(app.cubos):
+        dibujar_cubo(cubo['pos'], cubo['escala'], cubo['rotacion'],
+                    app.objeto_seleccionado == i and app.tipo_seleccion == 'cubo')
     
     # Feedback visual para colocación
     if app.modal_placing:
@@ -753,6 +823,11 @@ def teclado(key, x, y):
         app.modal_placing = True
         print("Click en el terreno para colocar luz")
     
+    elif k == 'b':  # Colocar cubo
+        app.modo_edicion = 'colocar_cubo'
+        app.modal_placing = True
+        print("Click en el terreno para colocar cubo")
+    
     elif k == 's':  # Modo selección
         app.selection_mode = True
         app.modal_placing = False
@@ -760,7 +835,7 @@ def teclado(key, x, y):
     
     # Transformación de objetos seleccionados
     if app.objeto_seleccionado is not None:
-        if k == 'g':  # Mover (ya implementado con mouse)
+        if k == 'g':  # Mover
             app.dragging = True
         elif k == 'r':  # Rotar
             app.rotando = True
@@ -768,6 +843,54 @@ def teclado(key, x, y):
             app.escalando = True
         elif k == 'x':  # Eliminar
             eliminar_objeto_seleccionado()
+        
+        # Rotación específica
+        if app.rotando:
+            if k == 'w':  # Rotar en X
+                if app.tipo_seleccion == 'camara':
+                    app.camaras[app.objeto_seleccionado]['rotacion'][0] += 5
+                elif app.tipo_seleccion == 'luz':
+                    app.luces[app.objeto_seleccionado]['rotacion'][0] += 5
+                elif app.tipo_seleccion == 'cubo':
+                    app.cubos[app.objeto_seleccionado]['rotacion'][0] += 5
+            elif k == 'a':  # Rotar en Y
+                if app.tipo_seleccion == 'camara':
+                    app.camaras[app.objeto_seleccionado]['rotacion'][1] += 5
+                elif app.tipo_seleccion == 'luz':
+                    app.luces[app.objeto_seleccionado]['rotacion'][1] += 5
+                elif app.tipo_seleccion == 'cubo':
+                    app.cubos[app.objeto_seleccionado]['rotacion'][1] += 5
+            elif k == 'd':  # Rotar en Z
+                if app.tipo_seleccion == 'camara':
+                    app.camaras[app.objeto_seleccionado]['rotacion'][2] += 5
+                elif app.tipo_seleccion == 'luz':
+                    app.luces[app.objeto_seleccionado]['rotacion'][2] += 5
+                elif app.tipo_seleccion == 'cubo':
+                    app.cubos[app.objeto_seleccionado]['rotacion'][2] += 5
+        
+        # Escalado específico
+        elif app.escalando:
+            if k == 'w':  # Escalar en X
+                if app.tipo_seleccion == 'camara':
+                    app.camaras[app.objeto_seleccionado]['escala'][0] += 0.1
+                elif app.tipo_seleccion == 'luz':
+                    app.luces[app.objeto_seleccionado]['escala'][0] += 0.1
+                elif app.tipo_seleccion == 'cubo':
+                    app.cubos[app.objeto_seleccionado]['escala'][0] += 0.1
+            elif k == 'a':  # Escalar en Y
+                if app.tipo_seleccion == 'camara':
+                    app.camaras[app.objeto_seleccionado]['escala'][1] += 0.1
+                elif app.tipo_seleccion == 'luz':
+                    app.luces[app.objeto_seleccionado]['escala'][1] += 0.1
+                elif app.tipo_seleccion == 'cubo':
+                    app.cubos[app.objeto_seleccionado]['escala'][1] += 0.1
+            elif k == 'd':  # Escalar en Z
+                if app.tipo_seleccion == 'camara':
+                    app.camaras[app.objeto_seleccionado]['escala'][2] += 0.1
+                elif app.tipo_seleccion == 'luz':
+                    app.luces[app.objeto_seleccionado]['escala'][2] += 0.1
+                elif app.tipo_seleccion == 'cubo':
+                    app.cubos[app.objeto_seleccionado]['escala'][2] += 0.1
     
     # Navegación
     if not app.objeto_seleccionado:
@@ -800,13 +923,17 @@ def mouse(btn, estado, x, y):
     # Modo colocación de objetos (clic izquierdo)
     if app.modal_placing and btn == GLUT_LEFT_BUTTON and estado == GLUT_DOWN:
         pos = obtener_posicion_3d(x, y)
-        if pos:
-            app.punto_seleccionado = pos
-            if app.modo_edicion == 'colocar_camara':
-                agregar_camara(pos)
-            elif app.modo_edicion == 'colocar_luz':
-                agregar_luz(pos)
-            app.modal_placing = False
+        if pos is None:
+            print("No se puede determinar la posicion del terreno")
+            return
+        app.punto_seleccionado=pos
+        if app.modo_edicion=='colocar_camara':
+            agregar_camara(pos)
+        elif app.modo_edicion=='colocar_luz':
+            agregar_luz(pos)
+        elif app.modo_edicion=='colocar_cubo':
+            agregar_cubo(pos)
+        app.modal_placing=False
         glutPostRedisplay()
         return
     
@@ -845,14 +972,23 @@ def mouse(btn, estado, x, y):
             elif 230 <= x <= 330:  # Botón Luz
                 app.modo_edicion = 'colocar_luz'
                 app.modal_placing = True
-            elif 340 <= x <= 440:  # Botón Eliminar
+            elif 340 <= x <= 440:  # Botón Cubo
+                app.modo_edicion = 'colocar_cubo'
+                app.modal_placing = True
+            elif 450 <= x <= 550:  # Botón Eliminar
                 if app.objeto_seleccionado is not None:
                     eliminar_objeto_seleccionado()
-            elif 450 <= x <= 550:  # Botón Vista Cam
+            elif 560 <= x <= 660:  # Botón Vista Cam
                 if app.tipo_seleccion == 'camara' and app.objeto_seleccionado is not None:
                     app.camara_actual = app.objeto_seleccionado
-            elif 560 <= x <= 660:  # Botón Vista Libre
+            elif 670 <= x <= 770:  # Botón Vista Libre
                 app.camara_actual = None
+            elif 780 <= x <= 880:  # Botón Mover
+                app.dragging = True
+            elif 890 <= x <= 990:  # Botón Rotar
+                app.rotando = True
+            elif 1000 <= x <= 1100:  # Botón Escalar
+                app.escalando = True
             glutPostRedisplay()
             return
         
@@ -902,13 +1038,22 @@ def motion(x, y):
             if app.tipo_seleccion == 'camara':
                 cam = app.camaras[app.objeto_seleccionado]
                 cam['pos'][0] = pos[0]
-                cam['pos'][1] = pos[1]
+                cam['pos'][1] = pos[1] if pos[1] > 0 else 0.5  # Mantener sobre el terreno
                 cam['pos'][2] = pos[2]
+                # Actualizar look_at para que siga apuntando en la misma dirección
+                cam['look_at'][0] = pos[0] + (cam['look_at'][0] - cam['pos'][0])
+                cam['look_at'][1] = pos[1] + (cam['look_at'][1] - cam['pos'][1])
+                cam['look_at'][2] = pos[2] + (cam['look_at'][2] - cam['pos'][2])
             elif app.tipo_seleccion == 'luz':
                 luz = app.luces[app.objeto_seleccionado]
                 luz['pos'][0] = pos[0]
-                luz['pos'][1] = pos[1]
+                luz['pos'][1] = pos[1] if pos[1] > 0 else 1.0  # Mantener sobre el terreno
                 luz['pos'][2] = pos[2]
+            elif app.tipo_seleccion == 'cubo':
+                cubo = app.cubos[app.objeto_seleccionado]
+                cubo['pos'][0] = pos[0]
+                cubo['pos'][1] = pos[1] if pos[1] > 0 else 0.5  # Mantener sobre el terreno
+                cubo['pos'][2] = pos[2]
         glutPostRedisplay()
         return
     
