@@ -1,4 +1,4 @@
-# Ventana de visualización 3D con OpenGL - Versión Corregida
+# Ventana de visualización 3D con OpenGL - Versión Mejorada
 from OpenGL.GL import *
 from OpenGL.GLU import *
 from OpenGL.GLUT import *
@@ -17,7 +17,7 @@ class AppState:
         self.punto_seleccionado = None
         self.modal_placing = False
         self.selection_mode = False
-        self.modo_edicion = None  # Agregar esta línea que faltaba
+        self.modo_edicion = None
 
         self.modo_perspectiva = True
         self.zoom = 1.0
@@ -48,6 +48,10 @@ class AppState:
         self.dragging = False
         self.rotando = False
         self.escalando = False
+        
+        # Nuevos controles para escalado
+        self.cara_seleccionada = None  # Para escalado por caras
+        self.punto_inicial_escalado = None
         
         # Transformaciones
         self.centro_transformacion = None
@@ -105,14 +109,13 @@ def configurar_luz(index):
         return
     
     luz = app.luces[index]
-    luz_id = GL_LIGHT1 + index  # Usar LIGHT1 en adelante para luces del usuario
+    luz_id = GL_LIGHT1 + index
     
     if luz['activa']:
         glEnable(luz_id)
     else:
         glDisable(luz_id)
     
-    # Configurar posición/dirección según tipo de luz
     if luz['tipo_luz'] == 'directional':
         pos = [luz['pos'][0], luz['pos'][1], luz['pos'][2], 0.0]
     else:
@@ -122,7 +125,6 @@ def configurar_luz(index):
     glLightfv(luz_id, GL_DIFFUSE, luz['color'])
     glLightfv(luz_id, GL_SPECULAR, [1.0, 1.0, 1.0, 1.0])
     
-    # Configuraciones específicas para luz spot
     if luz['tipo_luz'] == 'spot':
         glLightf(luz_id, GL_SPOT_CUTOFF, luz['angulo_spot'])
         glLightf(luz_id, GL_SPOT_EXPONENT, luz['exponente_spot'])
@@ -145,7 +147,6 @@ def dibujar_terreno():
     tamaño = app.tamanio_terreno
     mitad = tamaño / 2
     
-    # Dibujar el terreno como un gran cuadrado
     glBegin(GL_QUADS)
     glVertex3f(-mitad, 0, -mitad)
     glVertex3f(mitad, 0, -mitad)
@@ -160,7 +161,6 @@ def dibujar_terreno():
     divisiones = app.divisiones_terreno
     paso = tamaño / divisiones
 
-    # Líneas principales
     glLineWidth(1.5)
     glBegin(GL_LINES)
     for i in range(0, divisiones + 1, 5):
@@ -171,7 +171,6 @@ def dibujar_terreno():
         glVertex3f(mitad, 0.01, x)
     glEnd()
     
-    # Líneas secundarias
     glLineWidth(0.5)
     glBegin(GL_LINES)
     for i in range(divisiones + 1):
@@ -186,6 +185,35 @@ def dibujar_terreno():
     glLineWidth(1)
     glPolygonMode(GL_FRONT_AND_BACK, GL_FILL)
 
+def dibujar_manipuladores_escalado(pos, escala):
+    """Dibujar manipuladores para escalado en modo E"""
+    if not app.escalando:
+        return
+        
+    glDisable(GL_LIGHTING)
+    glPushMatrix()
+    glTranslatef(*pos)
+    
+    # Manipuladores en las caras del cubo
+    manipuladores = [
+        ([escala[0]/2, 0, 0], [1, 0, 0], 'x+'),      # Cara derecha
+        ([-escala[0]/2, 0, 0], [1, 0, 0], 'x-'),     # Cara izquierda
+        ([0, escala[1]/2, 0], [0, 1, 0], 'y+'),      # Cara superior
+        ([0, -escala[1]/2, 0], [0, 1, 0], 'y-'),     # Cara inferior
+        ([0, 0, escala[2]/2], [0, 0, 1], 'z+'),      # Cara frontal
+        ([0, 0, -escala[2]/2], [0, 0, 1], 'z-')      # Cara trasera
+    ]
+    
+    for pos_manip, color, cara in manipuladores:
+        glColor3f(*color)
+        glPushMatrix()
+        glTranslatef(*pos_manip)
+        glutSolidSphere(0.1, 8, 8)
+        glPopMatrix()
+    
+    glPopMatrix()
+    glEnable(GL_LIGHTING)
+
 def dibujar_cubo(pos, escala=(1,1,1), rotacion=(0,0,0), seleccionado=False):
     glPushMatrix()
     glTranslatef(*pos)
@@ -195,9 +223,8 @@ def dibujar_cubo(pos, escala=(1,1,1), rotacion=(0,0,0), seleccionado=False):
     glScalef(*escala)
     
     if seleccionado:
-        # Cubo seleccionado - BORDE ROJO
         glDisable(GL_LIGHTING)
-        glColor3f(1, 0, 0)  # ROJO para selección
+        glColor3f(1, 0, 0)
         glPolygonMode(GL_FRONT_AND_BACK, GL_LINE)
         glLineWidth(4)
         glutWireCube(1.0)
@@ -207,13 +234,12 @@ def dibujar_cubo(pos, escala=(1,1,1), rotacion=(0,0,0), seleccionado=False):
         glDisable(GL_LIGHTING)
         glLineWidth(2)
         glBegin(GL_LINES)
-        glColor3f(1, 0, 0); glVertex3f(0, 0, 0); glVertex3f(1.5, 0, 0)  # Eje X
-        glColor3f(0, 1, 0); glVertex3f(0, 0, 0); glVertex3f(0, 1.5, 0)  # Eje Y
-        glColor3f(0, 0, 1); glVertex3f(0, 0, 0); glVertex3f(0, 0, 1.5)  # Eje Z
+        glColor3f(1, 0, 0); glVertex3f(0, 0, 0); glVertex3f(1.5, 0, 0)
+        glColor3f(0, 1, 0); glVertex3f(0, 0, 0); glVertex3f(0, 1.5, 0)
+        glColor3f(0, 0, 1); glVertex3f(0, 0, 0); glVertex3f(0, 0, 1.5)
         glEnd()
         glEnable(GL_LIGHTING)
     else:
-        # Cubo normal (gris)
         glColor3f(0.6, 0.6, 0.6)
         if app.modo_visualizacion == "wireframe":
             glutWireCube(1.0)
@@ -221,6 +247,10 @@ def dibujar_cubo(pos, escala=(1,1,1), rotacion=(0,0,0), seleccionado=False):
             glutSolidCube(1.0)
     
     glPopMatrix()
+    
+    # Dibujar manipuladores de escalado si está seleccionado y en modo escalado
+    if seleccionado and app.escalando and app.tipo_seleccion == 'cubo':
+        dibujar_manipuladores_escalado(pos, escala)
 
 def dibujar_camara(pos, look_at, up, escala=(1,1,1), rotacion=(0,0,0), seleccionada=False):
     glPushMatrix()
@@ -230,7 +260,6 @@ def dibujar_camara(pos, look_at, up, escala=(1,1,1), rotacion=(0,0,0), seleccion
     glRotatef(rotacion[2], 0, 0, 1)
     glScalef(*escala)
     
-    # Orientar cámara hacia look_at
     dx, dy, dz = look_at[0]-pos[0], look_at[1]-pos[1], look_at[2]-pos[2]
     angulo = math.degrees(math.atan2(dx, dz))
     glRotatef(angulo, 0, 1, 0)
@@ -238,20 +267,18 @@ def dibujar_camara(pos, look_at, up, escala=(1,1,1), rotacion=(0,0,0), seleccion
     glDisable(GL_LIGHTING)
     
     if seleccionada:
-        # Cámara seleccionada - BORDE ROJO
-        glColor3f(1.0, 0.0, 0.0)  # ROJO para selección
+        glColor3f(1.0, 0.0, 0.0)
         glPolygonMode(GL_FRONT_AND_BACK, GL_LINE)
         glLineWidth(4)
         
-        # Dibujar ejes de transformación
         glLineWidth(2)
         glBegin(GL_LINES)
-        glColor3f(1, 0, 0); glVertex3f(0, 0, 0); glVertex3f(1.5, 0, 0)  # Eje X
-        glColor3f(0, 1, 0); glVertex3f(0, 0, 0); glVertex3f(0, 1.5, 0)  # Eje Y
-        glColor3f(0, 0, 1); glVertex3f(0, 0, 0); glVertex3f(0, 0, 1.5)  # Eje Z
+        glColor3f(1, 0, 0); glVertex3f(0, 0, 0); glVertex3f(1.5, 0, 0)
+        glColor3f(0, 1, 0); glVertex3f(0, 0, 0); glVertex3f(0, 1.5, 0)
+        glColor3f(0, 0, 1); glVertex3f(0, 0, 0); glVertex3f(0, 0, 1.5)
         glEnd()
     else:
-        glColor3f(0.2, 0.2, 0.8)  # Azul normal
+        glColor3f(0.2, 0.2, 0.8)
     
     # Dibujar cuadrado (cuerpo de la cámara)
     glBegin(GL_QUADS)
@@ -291,21 +318,18 @@ def dibujar_luz(pos, color, tipo, escala=(1,1,1), rotacion=(0,0,0), seleccionada
     glDisable(GL_LIGHTING)
     
     if seleccionada:
-        # Luz seleccionada - BORDE ROJO
-        glColor3f(1, 0, 0)  # ROJO para selección
+        glColor3f(1, 0, 0)
         glPolygonMode(GL_FRONT_AND_BACK, GL_LINE)
         glLineWidth(4)
         glutWireSphere(0.25, 16, 16)
         
-        # Dibujar ejes de transformación
         glLineWidth(2)
         glBegin(GL_LINES)
-        glColor3f(1, 0, 0); glVertex3f(0, 0, 0); glVertex3f(1.5, 0, 0)  # Eje X
-        glColor3f(0, 1, 0); glVertex3f(0, 0, 0); glVertex3f(0, 1.5, 0)  # Eje Y
-        glColor3f(0, 0, 1); glVertex3f(0, 0, 0); glVertex3f(0, 0, 1.5)  # Eje Z
+        glColor3f(1, 0, 0); glVertex3f(0, 0, 0); glVertex3f(1.5, 0, 0)
+        glColor3f(0, 1, 0); glVertex3f(0, 0, 0); glVertex3f(0, 1.5, 0)
+        glColor3f(0, 0, 1); glVertex3f(0, 0, 0); glVertex3f(0, 0, 1.5)
         glEnd()
     else:
-        # Luz normal
         glColor3f(*color[:3])
     
     # Esfera
@@ -343,7 +367,7 @@ def dibujar_barra_herramientas():
     glVertex2f(0, 40)
     glEnd()
 
-    # Botones con estado visual
+    # Botones simplificados (sin mover, rotar, escalar)
     botones = [
         ("Seleccionar", 10, app.selection_mode),
         ("Cámara", 120, app.modo_edicion == 'colocar_camara'),
@@ -351,18 +375,14 @@ def dibujar_barra_herramientas():
         ("Cubo", 340, app.modo_edicion == 'colocar_cubo'),
         ("Eliminar", 450, False),
         ("Vista Cam", 560, app.camara_actual is not None),
-        ("Vista Libre", 670, app.camara_actual is None),
-        ("Mover", 780, app.dragging),
-        ("Rotar", 890, app.rotando),
-        ("Escalar", 1000, app.escalando)
+        ("Vista Libre", 670, app.camara_actual is None)
     ]
     
     for nombre, x, activo in botones:
-        # Color del botón según estado
         if activo:
-            glColor3f(0.4, 0.6, 0.4)  # Verde si está activo
+            glColor3f(0.4, 0.6, 0.4)
         else:
-            glColor3f(0.22, 0.22, 0.32)  # Gris normal
+            glColor3f(0.22, 0.22, 0.32)
         
         glBegin(GL_QUADS)
         glVertex2f(x, 8)
@@ -384,13 +404,10 @@ def dibujar_barra_herramientas():
     glMatrixMode(GL_MODELVIEW)
 
 def obtener_posicion_3d(x, y):
-    """FUNCIÓN CORREGIDA para obtener posición 3D desde coordenadas de pantalla"""
-    # Configurar matrices como en display()
     glMatrixMode(GL_MODELVIEW)
     glPushMatrix()
     glLoadIdentity()
     
-    # Aplicar la misma transformación de vista que en display()
     if app.camara_actual is not None and app.camaras:
         cam = app.camaras[app.camara_actual]
         gluLookAt(cam['pos'][0], cam['pos'][1], cam['pos'][2],
@@ -401,7 +418,6 @@ def obtener_posicion_3d(x, y):
         glRotatef(app.angulo_x, 1, 0, 0)
         glRotatef(app.angulo_y, 0, 1, 0)
     
-    # Obtener matrices actuales
     viewport = glGetIntegerv(GL_VIEWPORT)
     modelview = glGetDoublev(GL_MODELVIEW_MATRIX)
     projection = glGetDoublev(GL_PROJECTION_MATRIX)
@@ -411,19 +427,16 @@ def obtener_posicion_3d(x, y):
     winY = float(viewport[3] - y)
     
     try:
-        # Obtener dos puntos en el rayo de la cámara
         pos1 = gluUnProject(x, winY, 0.0, modelview, projection, viewport)
         pos2 = gluUnProject(x, winY, 1.0, modelview, projection, viewport)
         
         if pos1 and pos2:
-            # Calcular intersección con el plano Y=0 (terreno)
             dir_ray = np.subtract(pos2, pos1)
-            if abs(dir_ray[1]) > 1e-6:  # Evitar división por cero
+            if abs(dir_ray[1]) > 1e-6:
                 t = -pos1[1] / dir_ray[1]
-                if t >= 0:  # Solo intersecciones hacia adelante
+                if t >= 0:
                     pos = np.add(pos1, np.multiply(dir_ray, t))
                     
-                    # Limitar posición dentro del terreno
                     mitad = app.tamanio_terreno / 2
                     pos[0] = max(-mitad, min(mitad, pos[0]))
                     pos[1] = 0
@@ -435,27 +448,22 @@ def obtener_posicion_3d(x, y):
     return None
 
 def seleccionar_objeto(x, y):
-    """Sistema mejorado de selección usando color picking"""
-    # Configurar buffer de selección
     glSelectBuffer(512)
     glRenderMode(GL_SELECT)
     glInitNames()
     
-    # Configurar vista para selección
     viewport = glGetIntegerv(GL_VIEWPORT)
     glMatrixMode(GL_PROJECTION)
     glPushMatrix()
     glLoadIdentity()
     gluPickMatrix(x, viewport[3]-y, 5, 5, viewport)
     
-    # Misma proyección que en display()
     aspect = app.WIDTH / app.HEIGHT
     if app.modo_perspectiva:
         gluPerspective(45 * app.zoom, aspect, 0.1, 100.0)
     else:
         glOrtho(-5 * app.zoom, 5 * app.zoom, -5 * app.zoom, 5 * app.zoom, 0.1, 100.0)
     
-    # Misma vista que en display()
     glMatrixMode(GL_MODELVIEW)
     glLoadIdentity()
     
@@ -469,42 +477,35 @@ def seleccionar_objeto(x, y):
         glRotatef(app.angulo_x, 1, 0, 0)
         glRotatef(app.angulo_y, 0, 1, 0)
     
-    # Dibujar objetos con identificadores
-    # Dibujar cámaras con ID
     for i, cam in enumerate(app.camaras):
-        glPushName(1)  # Tipo cámara
-        glPushName(i)  # Índice
+        glPushName(1)
+        glPushName(i)
         dibujar_camara(cam['pos'], cam['look_at'], cam['up'], cam['escala'], cam['rotacion'], False)
         glPopName()
         glPopName()
     
-    # Dibujar luces con ID
     for i, luz in enumerate(app.luces):
-        glPushName(2)  # Tipo luz
-        glPushName(i)  # Índice
+        glPushName(2)
+        glPushName(i)
         dibujar_luz(luz['pos'], luz['color'], luz['tipo_luz'], luz['escala'], luz['rotacion'], False)
         glPopName()
         glPopName()
     
-    # Dibujar cubos con ID
     for i, cubo in enumerate(app.cubos):
-        glPushName(3)  # Tipo cubo
-        glPushName(i)  # Índice
+        glPushName(3)
+        glPushName(i)
         dibujar_cubo(cubo['pos'], cubo['escala'], cubo['rotacion'], False)
         glPopName()
         glPopName()
     
-    # Restaurar vista normal
     glMatrixMode(GL_PROJECTION)
     glPopMatrix()
     glMatrixMode(GL_MODELVIEW)
     glFlush()
     
-    # Procesar hits
     hits = glRenderMode(GL_RENDER)
     
     if hits:
-        # Tomar el objeto más cercano
         hit = hits[0]
         if len(hit.names) >= 2:
             tipo = hit.names[0]
@@ -527,7 +528,6 @@ def eliminar_objeto_seleccionado():
     
     elif app.tipo_seleccion == 'luz' and app.objeto_seleccionado is not None:
         if 0 <= app.objeto_seleccionado < len(app.luces):
-            # Desactivar la luz antes de eliminarla
             luz_id = GL_LIGHT1 + app.objeto_seleccionado
             glDisable(luz_id)
             app.luces.pop(app.objeto_seleccionado)
@@ -610,17 +610,154 @@ def mostrar_coordenadas():
         for char in texto:
             glutBitmapCharacter(GLUT_BITMAP_9_BY_15, ord(char))
         
+        # Mostrar modo actual
+        glRasterPos2f(10, 80)
+        modo_texto = ""
+        if app.dragging:
+            modo_texto = "MODO: Mover (G) - Mouse o flechas"
+        elif app.rotando:
+            modo_texto = "MODO: Rotar (R) - Flechas del teclado"
+        elif app.escalando:
+            modo_texto = "MODO: Escalar (E) - Flechas o mouse en manipuladores"
+        
+        for char in modo_texto:
+            glutBitmapCharacter(GLUT_BITMAP_9_BY_15, ord(char))
+        
         glEnable(GL_LIGHTING)
         glPopMatrix()
         glMatrixMode(GL_PROJECTION)
         glPopMatrix()
         glMatrixMode(GL_MODELVIEW)
 
+def mover_objeto_con_teclado(dx, dy, dz):
+    """Función para mover objetos con las flechas del teclado"""
+    if app.objeto_seleccionado is None:
+        return
+    
+    if app.tipo_seleccion == 'camara':
+        cam = app.camaras[app.objeto_seleccionado]
+        cam['pos'][0] += dx
+        cam['pos'][1] += dy
+        cam['pos'][2] += dz
+        # Mantener dirección de la cámara
+        cam['look_at'][0] += dx
+        cam['look_at'][1] += dy
+        cam['look_at'][2] += dz
+        
+    elif app.tipo_seleccion == 'luz':
+        luz = app.luces[app.objeto_seleccionado]
+        luz['pos'][0] += dx
+        luz['pos'][1] += dy
+        luz['pos'][2] += dz
+        configurar_luz(app.objeto_seleccionado)
+        
+    elif app.tipo_seleccion == 'cubo':
+        cubo = app.cubos[app.objeto_seleccionado]
+        cubo['pos'][0] += dx
+        cubo['pos'][1] += dy
+        cubo['pos'][2] += dz
+
+def rotar_objeto_con_teclado(rx, ry, rz):
+    """Función para rotar objetos con las flechas del teclado"""
+    if app.objeto_seleccionado is None:
+        return
+    
+    if app.tipo_seleccion == 'camara':
+        cam = app.camaras[app.objeto_seleccionado]
+        cam['rotacion'][0] += rx
+        cam['rotacion'][1] += ry
+        cam['rotacion'][2] += rz
+        
+    elif app.tipo_seleccion == 'luz':
+        luz = app.luces[app.objeto_seleccionado]
+        luz['rotacion'][0] += rx
+        luz['rotacion'][1] += ry
+        luz['rotacion'][2] += rz
+        
+    elif app.tipo_seleccion == 'cubo':
+        cubo = app.cubos[app.objeto_seleccionado]
+        cubo['rotacion'][0] += rx
+        cubo['rotacion'][1] += ry
+        cubo['rotacion'][2] += rz
+
+def escalar_objeto_con_teclado(factor):
+    """Función para escalar objetos con las flechas del teclado"""
+    if app.objeto_seleccionado is None:
+        return
+    
+    if app.tipo_seleccion == 'camara':
+        cam = app.camaras[app.objeto_seleccionado]
+        for i in range(3):
+            cam['escala'][i] *= factor
+            
+    elif app.tipo_seleccion == 'luz':
+        luz = app.luces[app.objeto_seleccionado]
+        for i in range(3):
+            luz['escala'][i] *= factor
+            
+    elif app.tipo_seleccion == 'cubo':
+        cubo = app.cubos[app.objeto_seleccionado]
+        for i in range(3):
+            cubo['escala'][i] *= factor
+
+def detectar_cara_cubo(x, y):
+    """Detectar qué cara del cubo se está seleccionando para escalado"""
+    if app.tipo_seleccion != 'cubo' or app.objeto_seleccionado is None:
+        return None
+    
+    # Implementación simplificada - usar posición del mouse relativa al centro
+    cubo = app.cubos[app.objeto_seleccionado]
+    pos_3d = obtener_posicion_3d(x, y)
+    if pos_3d is None:
+        return None
+    
+    # Determinar cara más cercana basada en la posición
+    centro = cubo['pos']
+    dx = pos_3d[0] - centro[0]
+    dy = pos_3d[1] - centro[1] 
+    dz = pos_3d[2] - centro[2]
+    
+    # Encontrar el eje con mayor diferencia
+    abs_dx, abs_dy, abs_dz = abs(dx), abs(dy), abs(dz)
+    
+    if abs_dx > abs_dy and abs_dx > abs_dz:
+        return 'x+' if dx > 0 else 'x-'
+    elif abs_dy > abs_dx and abs_dy > abs_dz:
+        return 'y+' if dy > 0 else 'y-'
+    else:
+        return 'z+' if dz > 0 else 'z-'
+
+def escalar_cara_cubo(cara, delta):
+    """Escalar una cara específica del cubo"""
+    if app.tipo_seleccion != 'cubo' or app.objeto_seleccionado is None:
+        return
+    
+    cubo = app.cubos[app.objeto_seleccionado]
+    factor = 1 + delta * 0.01  # Factor de escalado basado en delta del mouse
+    
+    if cara == 'x+' or cara == 'x-':
+        cubo['escala'][0] *= factor
+        if cara == 'x+':
+            cubo['pos'][0] += (factor - 1) * cubo['escala'][0] * 0.5
+        else:
+            cubo['pos'][0] -= (factor - 1) * cubo['escala'][0] * 0.5
+    elif cara == 'y+' or cara == 'y-':
+        cubo['escala'][1] *= factor
+        if cara == 'y+':
+            cubo['pos'][1] += (factor - 1) * cubo['escala'][1] * 0.5
+        else:
+            cubo['pos'][1] -= (factor - 1) * cubo['escala'][1] * 0.5
+    elif cara == 'z+' or cara == 'z-':
+        cubo['escala'][2] *= factor
+        if cara == 'z+':
+            cubo['pos'][2] += (factor - 1) * cubo['escala'][2] * 0.5
+        else:
+            cubo['pos'][2] -= (factor - 1) * cubo['escala'][2] * 0.5
+
 def display():
     glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT)
     glLoadIdentity()
     
-    # Configurar vista
     if app.camara_actual is not None and app.camaras:
         cam = app.camaras[app.camara_actual]
         gluLookAt(cam['pos'][0], cam['pos'][1], cam['pos'][2],
@@ -631,10 +768,8 @@ def display():
         glRotatef(app.angulo_x, 1, 0, 0)
         glRotatef(app.angulo_y, 0, 1, 0)
     
-    # Dibujar terreno
     dibujar_terreno()
     
-    # Dibujar todos los objetos
     for i, cam in enumerate(app.camaras):
         seleccionada = (app.objeto_seleccionado == i and app.tipo_seleccion == 'camara')
         dibujar_camara(cam['pos'], cam['look_at'], cam['up'], 
@@ -649,7 +784,6 @@ def display():
         seleccionado = (app.objeto_seleccionado == i and app.tipo_seleccion == 'cubo')
         dibujar_cubo(cubo['pos'], cubo['escala'], cubo['rotacion'], seleccionado)
     
-    # UI
     dibujar_barra_herramientas()
     mostrar_coordenadas()
     
@@ -668,7 +802,6 @@ def reshape(w, h):
 def teclado(key, x, y):
     k = key.decode("utf-8").lower()
     
-    # Comandos generales
     if k == "\x1b":  # ESC para salir
         app.salir_ventana = True
         glutDestroyWindow(glutGetWindow())
@@ -682,6 +815,7 @@ def teclado(key, x, y):
         app.dragging = False
         app.rotando = False
         app.escalando = False
+        app.cara_seleccionada = None
         print("Modos reseteados")
     
     # Modos de edición
@@ -715,87 +849,22 @@ def teclado(key, x, y):
             app.dragging = True
             app.rotando = False
             app.escalando = False
-            print("Modo: Mover objeto")
+            app.cara_seleccionada = None
+            print("Modo: Mover objeto (mouse o flechas)")
         elif k == 'r':  # Rotar
             app.rotando = True
             app.dragging = False
             app.escalando = False
-            print("Modo: Rotar objeto (WASD)")
+            app.cara_seleccionada = None
+            print("Modo: Rotar objeto (flechas del teclado)")
         elif k == 'e':  # Escalar
             app.escalando = True
             app.dragging = False
             app.rotando = False
-            print("Modo: Escalar objeto (WASD)")
+            print("Modo: Escalar objeto (flechas o mouse)")
         elif k == 'x':  # Eliminar
             eliminar_objeto_seleccionado()
             print("Objeto eliminado")
-        
-        # Rotación específica
-        if app.rotando:
-            if k == 'w':  # Rotar en X
-                if app.tipo_seleccion == 'camara':
-                    app.camaras[app.objeto_seleccionado]['rotacion'][0] += 5
-                elif app.tipo_seleccion == 'luz':
-                    app.luces[app.objeto_seleccionado]['rotacion'][0] += 5
-                elif app.tipo_seleccion == 'cubo':
-                    app.cubos[app.objeto_seleccionado]['rotacion'][0] += 5
-            elif k == 's':  # Rotar en X (reverso)
-                if app.tipo_seleccion == 'camara':
-                    app.camaras[app.objeto_seleccionado]['rotacion'][0] -= 5
-                elif app.tipo_seleccion == 'luz':
-                    app.luces[app.objeto_seleccionado]['rotacion'][0] -= 5
-                elif app.tipo_seleccion == 'cubo':
-                    app.cubos[app.objeto_seleccionado]['rotacion'][0] -= 5
-            elif k == 'a':  # Rotar en Y
-                if app.tipo_seleccion == 'camara':
-                    app.camaras[app.objeto_seleccionado]['rotacion'][1] += 5
-                elif app.tipo_seleccion == 'luz':
-                    app.luces[app.objeto_seleccionado]['rotacion'][1] += 5
-                elif app.tipo_seleccion == 'cubo':
-                    app.cubos[app.objeto_seleccionado]['rotacion'][1] += 5
-            elif k == 'd':  # Rotar en Y (reverso)
-                if app.tipo_seleccion == 'camara':
-                    app.camaras[app.objeto_seleccionado]['rotacion'][1] -= 5
-                elif app.tipo_seleccion == 'luz':
-                    app.luces[app.objeto_seleccionado]['rotacion'][1] -= 5
-                elif app.tipo_seleccion == 'cubo':
-                    app.cubos[app.objeto_seleccionado]['rotacion'][1] -= 5
-        
-        # Escalado específico
-        elif app.escalando:
-            if k == 'w':  # Escalar más
-                factor = 1.1
-                if app.tipo_seleccion == 'camara':
-                    for i in range(3):
-                        app.camaras[app.objeto_seleccionado]['escala'][i] *= factor
-                elif app.tipo_seleccion == 'luz':
-                    for i in range(3):
-                        app.luces[app.objeto_seleccionado]['escala'][i] *= factor
-                elif app.tipo_seleccion == 'cubo':
-                    for i in range(3):
-                        app.cubos[app.objeto_seleccionado]['escala'][i] *= factor
-            elif k == 's':  # Escalar menos
-                factor = 0.9
-                if app.tipo_seleccion == 'camara':
-                    for i in range(3):
-                        app.camaras[app.objeto_seleccionado]['escala'][i] *= factor
-                elif app.tipo_seleccion == 'luz':
-                    for i in range(3):
-                        app.luces[app.objeto_seleccionado]['escala'][i] *= factor
-                elif app.tipo_seleccion == 'cubo':
-                    for i in range(3):
-                        app.cubos[app.objeto_seleccionado]['escala'][i] *= factor
-    
-    # Navegación (solo si no hay objeto seleccionado)
-    if not app.objeto_seleccionado and not app.rotando and not app.escalando:
-        if k == 'w':  # Adelante
-            app.angulo_x -= 5
-        elif k == 's':  # Atrás
-            app.angulo_x += 5
-        elif k == 'a':  # Izquierda
-            app.angulo_y -= 5
-        elif k == 'd':  # Derecha
-            app.angulo_y += 5
     
     # Visualización
     if k == 'v':  # Cambiar vista de cámara a libre
@@ -816,6 +885,51 @@ def teclado(key, x, y):
     elif k == '2':  # Cambiar modo de visualización
         app.modo_visualizacion = "wireframe" if app.modo_visualizacion == "solido" else "solido"
         print(f"Modo de visualización: {app.modo_visualizacion}")
+    
+    glutPostRedisplay()
+
+def teclado_especial(key, x, y):
+    """Manejo de teclas especiales (flechas)"""
+    if app.objeto_seleccionado is None:
+        # Navegación normal si no hay objeto seleccionado
+        if key == GLUT_KEY_UP:
+            app.angulo_x -= 5
+        elif key == GLUT_KEY_DOWN:
+            app.angulo_x += 5
+        elif key == GLUT_KEY_LEFT:
+            app.angulo_y -= 5
+        elif key == GLUT_KEY_RIGHT:
+            app.angulo_y += 5
+    else:
+        # Transformaciones del objeto seleccionado
+        if app.dragging:
+            # Mover con flechas
+            if key == GLUT_KEY_UP:
+                mover_objeto_con_teclado(0, 0, -0.2)
+            elif key == GLUT_KEY_DOWN:
+                mover_objeto_con_teclado(0, 0, 0.2)
+            elif key == GLUT_KEY_LEFT:
+                mover_objeto_con_teclado(-0.2, 0, 0)
+            elif key == GLUT_KEY_RIGHT:
+                mover_objeto_con_teclado(0.2, 0, 0)
+                
+        elif app.rotando:
+            # Rotar con flechas
+            if key == GLUT_KEY_UP:
+                rotar_objeto_con_teclado(5, 0, 0)
+            elif key == GLUT_KEY_DOWN:
+                rotar_objeto_con_teclado(-5, 0, 0)
+            elif key == GLUT_KEY_LEFT:
+                rotar_objeto_con_teclado(0, -5, 0)
+            elif key == GLUT_KEY_RIGHT:
+                rotar_objeto_con_teclado(0, 5, 0)
+                
+        elif app.escalando:
+            # Escalar con flechas
+            if key == GLUT_KEY_UP:
+                escalar_objeto_con_teclado(1.1)
+            elif key == GLUT_KEY_DOWN:
+                escalar_objeto_con_teclado(0.9)
     
     glutPostRedisplay()
 
@@ -891,32 +1005,20 @@ def mouse(btn, estado, x, y):
             elif 670 <= x <= 770:  # Botón Vista Libre
                 app.camara_actual = None
                 print("Vista libre")
-            elif 780 <= x <= 880:  # Botón Mover
-                if app.objeto_seleccionado is not None:
-                    app.dragging = True
-                    app.rotando = False
-                    app.escalando = False
-                    print("Modo: Mover")
-            elif 890 <= x <= 990:  # Botón Rotar
-                if app.objeto_seleccionado is not None:
-                    app.rotando = True
-                    app.dragging = False
-                    app.escalando = False
-                    print("Modo: Rotar")
-            elif 1000 <= x <= 1100:  # Botón Escalar
-                if app.objeto_seleccionado is not None:
-                    app.escalando = True
-                    app.dragging = False
-                    app.rotando = False
-                    print("Modo: Escalar")
             glutPostRedisplay()
             return
+        
+        # Detectar cara para escalado si estamos en modo escalado
+        if app.escalando and app.tipo_seleccion == 'cubo':
+            app.cara_seleccionada = detectar_cara_cubo(x, y)
+            if app.cara_seleccionada:
+                print(f"Cara seleccionada para escalado: {app.cara_seleccionada}")
     
     # Liberación de botón
     elif btn == GLUT_LEFT_BUTTON and estado == GLUT_UP:
         if app.dragging:
-            app.dragging = False
             print("Movimiento finalizado")
+        app.cara_seleccionada = None
 
 def motion(x, y):
     dx = x - app.mouse_anterior[0]
@@ -929,11 +1031,9 @@ def motion(x, y):
         if pos:
             if app.tipo_seleccion == 'camara':
                 cam = app.camaras[app.objeto_seleccionado]
-                # Mantener altura relativa
                 altura_actual = cam['pos'][1]
                 cam['pos'][0] = pos[0]
                 cam['pos'][2] = pos[2]
-                # Ajustar look_at manteniendo dirección
                 offset_x = cam['look_at'][0] - cam['pos'][0]
                 offset_z = cam['look_at'][2] - cam['pos'][2]
                 cam['look_at'][0] = pos[0] + offset_x
@@ -954,6 +1054,13 @@ def motion(x, y):
         glutPostRedisplay()
         return
     
+    # Escalado por cara específica
+    elif app.escalando and app.cara_seleccionada and app.tipo_seleccion == 'cubo':
+        # Usar movimiento vertical del mouse para escalado
+        escalar_cara_cubo(app.cara_seleccionada, -dy)
+        glutPostRedisplay()
+        return
+    
     # Rotación de la vista (si no hay objeto seleccionado y no estamos en modo arrastre)
     if (app.objeto_seleccionado is None and app.camara_actual is None and 
         not app.dragging and not app.modal_placing):
@@ -965,7 +1072,7 @@ def abrir_ventana_3d():
     glutInit(sys.argv)
     glutInitDisplayMode(GLUT_DOUBLE | GLUT_RGB | GLUT_DEPTH)
     glutInitWindowSize(app.WIDTH, app.HEIGHT)
-    glutCreateWindow(b"Editor 3D Corregido - Paint OpenGL")
+    glutCreateWindow(b"Editor 3D Mejorado - Transformaciones Directas")
     
     init()
     configurar_proyeccion()
@@ -973,20 +1080,25 @@ def abrir_ventana_3d():
     glutDisplayFunc(display)
     glutReshapeFunc(reshape)
     glutKeyboardFunc(teclado)
+    glutSpecialFunc(teclado_especial)  # Agregar manejo de teclas especiales
     glutMouseFunc(mouse)
     glutMotionFunc(motion)
     glutIdleFunc(idle)
     
-    print("=== CONTROLES ===")
+    print("=== CONTROLES MEJORADOS ===")
     print("C - Colocar cámara")
     print("L - Colocar luz") 
     print("B - Colocar cubo")
     print("S - Modo selección")
     print("Clic derecho - Seleccionar objeto")
-    print("G - Mover objeto seleccionado")
-    print("R - Rotar objeto (WASD)")
-    print("E - Escalar objeto (W/S)")
+    print("")
+    print("=== TRANSFORMACIONES (con objeto seleccionado) ===")
+    print("G - MOVER: Mouse o flechas del teclado")
+    print("R - ROTAR: Flechas del teclado")  
+    print("E - ESCALAR: Flechas (uniforme) o mouse en caras (cubos)")
     print("X - Eliminar objeto")
+    print("")
+    print("=== OTROS ===")
     print("V - Cambiar vista cámara/libre")
     print("ESPACIO - Cancelar modo actual")
     print("ESC - Salir")
@@ -996,4 +1108,4 @@ def abrir_ventana_3d():
         idle()
 
 if __name__ == "__main__":
-    abrir_ventana_3d()
+    abrir_ventana_3d()   
