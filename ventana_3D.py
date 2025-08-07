@@ -7,6 +7,8 @@ import sys
 import math
 import numpy as np
 from PIL import Image  # Para manejo de texturas
+import tkinter as tk
+from tkinter import colorchooser, filedialog
 
 # Estados de la aplicación
 class AppState:
@@ -47,6 +49,12 @@ class AppState:
         self.esferas = []
         self.torus = []
         
+        # Texturas para objetos
+        self.textura_cubo = None
+        self.textura_esfera = None
+        self.textura_torus = None
+        self.textura_objetos_habilitada = False
+        
         # Selección CORREGIDA
         self.objeto_seleccionado = None
         self.tipo_seleccion = None
@@ -70,6 +78,7 @@ class AppState:
         self.menu_contextual_visible = False
         self.menu_pos = (0, 0)
         self.opciones_menu = []
+        self.submenu_textura_visible = False
 
         # Propiedades temporales
         self.color_luz_temp = [1.0, 1.0, 1.0, 1.0]
@@ -281,12 +290,20 @@ def dibujar_cubo(pos, escala=(1,1,1), rotacion=(0,0,0), seleccionado=False):
         glEnd()
         glEnable(GL_LIGHTING)
     else:
-        glColor3f(0.6, 0.6, 0.6)
+        if app.textura_cubo and app.textura_objetos_habilitada:
+            glEnable(GL_TEXTURE_2D)
+            glBindTexture(GL_TEXTURE_2D, app.textura_cubo)
+            glColor3f(1, 1, 1)
+        else:
+            glDisable(GL_TEXTURE_2D)
+            glColor3f(0.6, 0.6, 0.6)
+        
         if app.modo_visualizacion == "wireframe":
             glutWireCube(1.0)
         else:
             glutSolidCube(1.0)
     
+    glDisable(GL_TEXTURE_2D)
     glPopMatrix()
     
     # Dibujar manipuladores de escalado si está seleccionado y en modo escalado
@@ -319,12 +336,27 @@ def dibujar_esfera(pos, escala=(1,1,1), rotacion=(0,0,0), seleccionada=False):
         glEnd()
         glEnable(GL_LIGHTING)
     else:
-        glColor3f(0.6, 0.2, 0.2)
+        if app.textura_esfera and app.textura_objetos_habilitada:
+            glEnable(GL_TEXTURE_2D)
+            glBindTexture(GL_TEXTURE_2D, app.textura_esfera)
+            glColor3f(1, 1, 1)
+        else:
+            glDisable(GL_TEXTURE_2D)
+            glColor3f(0.6, 0.2, 0.2)
+        
         if app.modo_visualizacion == "wireframe":
             glutWireSphere(0.5, 20, 20)
         else:
-            glutSolidSphere(0.5, 20, 20)
+            # Para esferas texturizadas necesitamos implementar nuestras propias coordenadas de textura
+            if app.textura_esfera and app.textura_objetos_habilitada:
+                quad = gluNewQuadric()
+                gluQuadricTexture(quad, GL_TRUE)
+                gluSphere(quad, 0.5, 20, 20)
+                gluDeleteQuadric(quad)
+            else:
+                glutSolidSphere(0.5, 20, 20)
     
+    glDisable(GL_TEXTURE_2D)
     glPopMatrix()
 
 def dibujar_torus(pos, escala=(1,1,1), rotacion=(0,0,0), seleccionado=False):
@@ -353,12 +385,20 @@ def dibujar_torus(pos, escala=(1,1,1), rotacion=(0,0,0), seleccionado=False):
         glEnd()
         glEnable(GL_LIGHTING)
     else:
-        glColor3f(0.2, 0.6, 0.2)
+        if app.textura_torus and app.textura_objetos_habilitada:
+            glEnable(GL_TEXTURE_2D)
+            glBindTexture(GL_TEXTURE_2D, app.textura_torus)
+            glColor3f(1, 1, 1)
+        else:
+            glDisable(GL_TEXTURE_2D)
+            glColor3f(0.2, 0.6, 0.2)
+        
         if app.modo_visualizacion == "wireframe":
             glutWireTorus(0.2, 0.5, 20, 20)
         else:
             glutSolidTorus(0.2, 0.5, 20, 20)
     
+    glDisable(GL_TEXTURE_2D)
     glPopMatrix()
 
 def dibujar_camara(pos, look_at, up, escala=(1,1,1), rotacion=(0,0,0), seleccionada=False):
@@ -507,6 +547,27 @@ def dibujar_barra_herramientas():
         glRasterPos2f(x+12, 25)
         for c in nombre:
             glutBitmapCharacter(GLUT_BITMAP_9_BY_15, ord(c))
+
+    # Dibujar submenú de textura si está visible
+    if app.submenu_textura_visible:
+        glColor3f(0.3, 0.3, 0.4)
+        glBegin(GL_QUADS)
+        glVertex2f(670, 40)
+        glVertex2f(870, 40)
+        glVertex2f(870, 80)
+        glVertex2f(670, 80)
+        glEnd()
+        
+        opciones = [
+            ("Aplicar Color", 680, 50),
+            ("Aplicar Textura", 680, 70)
+        ]
+        
+        for texto, x, y in opciones:
+            glColor3f(1, 1, 1)
+            glRasterPos2f(x, y)
+            for c in texto:
+                glutBitmapCharacter(GLUT_BITMAP_9_BY_15, ord(c))
 
     glEnable(GL_DEPTH_TEST)
     glEnable(GL_LIGHTING)
@@ -742,6 +803,128 @@ def agregar_torus(posicion):
     app.tipo_seleccion = 'torus'
     print(f"Torus agregado en: {posicion}")
 
+def detectar_cara_cubo(x, y):
+    """Detectar qué cara del cubo se está seleccionando para escalado"""
+    if app.tipo_seleccion != 'cubo' or app.objeto_seleccionado is None:
+        return None
+    
+    cubo = app.cubos[app.objeto_seleccionado]
+    pos_3d = obtener_posicion_3d(x, y)
+    if pos_3d is None:
+        return None
+    
+    # Determinar cara más cercana basada en la posición
+    centro = cubo['pos']
+    dx = pos_3d[0] - centro[0]
+    dy = pos_3d[1] - centro[1] 
+    dz = pos_3d[2] - centro[2]
+    
+    # Encontrar el eje con mayor diferencia
+    abs_dx, abs_dy, abs_dz = abs(dx), abs(dy), abs(dz)
+    
+    if abs_dx > abs_dy and abs_dx > abs_dz:
+        return 'x+' if dx > 0 else 'x-'
+    elif abs_dy > abs_dx and abs_dy > abs_dz:
+        return 'y+' if dy > 0 else 'y-'
+    else:
+        return 'z+' if dz > 0 else 'z-'
+
+def detectar_cara_esfera(x, y):
+    """Detectar dirección de escalado para esfera"""
+    if app.tipo_seleccion != 'esfera' or app.objeto_seleccionado is None:
+        return None
+    
+    esfera = app.esferas[app.objeto_seleccionado]
+    pos_3d = obtener_posicion_3d(x, y)
+    if pos_3d is None:
+        return None
+    
+    centro = esfera['pos']
+    dx = pos_3d[0] - centro[0]
+    dy = pos_3d[1] - centro[1]
+    dz = pos_3d[2] - centro[2]
+    
+    # Encontrar el eje con mayor diferencia
+    abs_dx, abs_dy, abs_dz = abs(dx), abs(dy), abs(dz)
+    
+    if abs_dx > abs_dy and abs_dx > abs_dz:
+        return 'x+' if dx > 0 else 'x-'
+    elif abs_dy > abs_dx and abs_dy > abs_dz:
+        return 'y+' if dy > 0 else 'y-'
+    else:
+        return 'z+' if dz > 0 else 'z-'
+
+def detectar_cara_torus(x, y):
+    """Detectar dirección de escalado para torus"""
+    if app.tipo_seleccion != 'torus' or app.objeto_seleccionado is None:
+        return None
+    
+    torus = app.torus[app.objeto_seleccionado]
+    pos_3d = obtener_posicion_3d(x, y)
+    if pos_3d is None:
+        return None
+    
+    centro = torus['pos']
+    dx = pos_3d[0] - centro[0]
+    dy = pos_3d[1] - centro[1]
+    dz = pos_3d[2] - centro[2]
+    
+    # Encontrar el eje con mayor diferencia
+    abs_dx, abs_dy, abs_dz = abs(dx), abs(dy), abs(dz)
+    
+    if abs_dx > abs_dy and abs_dx > abs_dz:
+        return 'x+' if dx > 0 else 'x-'
+    elif abs_dy > abs_dx and abs_dy > abs_dz:
+        return 'y+' if dy > 0 else 'y-'
+    else:
+        return 'z+' if dz > 0 else 'z-'
+
+def escalar_objeto(cara, delta):
+    """Escalar un objeto en la dirección especificada"""
+    if app.objeto_seleccionado is None:
+        return
+    
+    factor = 1 + delta * 0.01  # Factor de escalado basado en delta del mouse
+    
+    if app.tipo_seleccion == 'cubo':
+        cubo = app.cubos[app.objeto_seleccionado]
+        if cara == 'x+' or cara == 'x-':
+            cubo['escala'][0] *= factor
+            if cara == 'x+':
+                cubo['pos'][0] += (factor - 1) * cubo['escala'][0] * 0.5
+            else:
+                cubo['pos'][0] -= (factor - 1) * cubo['escala'][0] * 0.5
+        elif cara == 'y+' or cara == 'y-':
+            cubo['escala'][1] *= factor
+            if cara == 'y+':
+                cubo['pos'][1] += (factor - 1) * cubo['escala'][1] * 0.5
+            else:
+                cubo['pos'][1] -= (factor - 1) * cubo['escala'][1] * 0.5
+        elif cara == 'z+' or cara == 'z-':
+            cubo['escala'][2] *= factor
+            if cara == 'z+':
+                cubo['pos'][2] += (factor - 1) * cubo['escala'][2] * 0.5
+            else:
+                cubo['pos'][2] -= (factor - 1) * cubo['escala'][2] * 0.5
+    
+    elif app.tipo_seleccion == 'esfera':
+        esfera = app.esferas[app.objeto_seleccionado]
+        if cara == 'x+' or cara == 'x-':
+            esfera['escala'][0] *= factor
+        elif cara == 'y+' or cara == 'y-':
+            esfera['escala'][1] *= factor
+        elif cara == 'z+' or cara == 'z-':
+            esfera['escala'][2] *= factor
+    
+    elif app.tipo_seleccion == 'torus':
+        torus = app.torus[app.objeto_seleccionado]
+        if cara == 'x+' or cara == 'x-':
+            torus['escala'][0] *= factor
+        elif cara == 'y+' or cara == 'y-':
+            torus['escala'][1] *= factor
+        elif cara == 'z+' or cara == 'z-':
+            torus['escala'][2] *= factor
+
 def mostrar_coordenadas():
     if app.objeto_seleccionado is not None:
         glMatrixMode(GL_PROJECTION)
@@ -900,6 +1083,63 @@ def escalar_objeto_con_teclado(factor):
         for i in range(3):
             torus['escala'][i] *= factor
 
+def aplicar_color_objeto():
+    """Aplicar un color al objeto seleccionado"""
+    if app.objeto_seleccionado is None:
+        return
+    
+    # Abrir el selector de color
+    color = colorchooser.askcolor(title="Seleccionar color")
+    if color[0] is None:  # El usuario canceló
+        return
+    
+    # Convertir el color de 0-255 a 0.0-1.0
+    r, g, b = color[0]
+    color_normalizado = (r/255.0, g/255.0, b/255.0)
+    
+    if app.tipo_seleccion == 'cubo':
+        app.cubos[app.objeto_seleccionado]['color'] = color_normalizado
+    elif app.tipo_seleccion == 'esfera':
+        app.esferas[app.objeto_seleccionado]['color'] = color_normalizado
+    elif app.tipo_seleccion == 'torus':
+        app.torus[app.objeto_seleccionado]['color'] = color_normalizado
+    
+    print(f"Color aplicado: {color_normalizado}")
+
+def aplicar_textura_objeto():
+    """Aplicar una textura al objeto seleccionado"""
+    if app.objeto_seleccionado is None:
+        return
+    
+    # Abrir diálogo para seleccionar archivo
+    root = tk.Tk()
+    root.withdraw()
+    file_path = filedialog.askopenfilename(title="Seleccionar textura", 
+                                          filetypes=[("Image files", "*.jpg;*.jpeg;*.png")])
+    if not file_path:
+        return
+    
+    # Cargar la textura
+    textura_id = cargar_textura(file_path)
+    if textura_id is None:
+        return
+    
+    # Asignar la textura al objeto correspondiente
+    if app.tipo_seleccion == 'cubo':
+        if app.textura_cubo:
+            glDeleteTextures([app.textura_cubo])
+        app.textura_cubo = textura_id
+    elif app.tipo_seleccion == 'esfera':
+        if app.textura_esfera:
+            glDeleteTextures([app.textura_esfera])
+        app.textura_esfera = textura_id
+    elif app.tipo_seleccion == 'torus':
+        if app.textura_torus:
+            glDeleteTextures([app.textura_torus])
+        app.textura_torus = textura_id
+    
+    print(f"Textura aplicada: {file_path}")
+
 def display():
     glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT)
     glLoadIdentity()
@@ -928,14 +1168,17 @@ def display():
     
     for i, cubo in enumerate(app.cubos):
         seleccionado = (app.objeto_seleccionado == i and app.tipo_seleccion == 'cubo')
+        glColor3f(*cubo['color'])
         dibujar_cubo(cubo['pos'], cubo['escala'], cubo['rotacion'], seleccionado)
     
     for i, esfera in enumerate(app.esferas):
         seleccionada = (app.objeto_seleccionado == i and app.tipo_seleccion == 'esfera')
+        glColor3f(*esfera['color'])
         dibujar_esfera(esfera['pos'], esfera['escala'], esfera['rotacion'], seleccionada)
     
     for i, torus in enumerate(app.torus):
         seleccionado = (app.objeto_seleccionado == i and app.tipo_seleccion == 'torus')
+        glColor3f(*torus['color'])
         dibujar_torus(torus['pos'], torus['escala'], torus['rotacion'], seleccionado)
     
     dibujar_barra_herramientas()
@@ -970,6 +1213,7 @@ def teclado(key, x, y):
         app.rotando = False
         app.escalando = False
         app.cara_seleccionada = None
+        app.submenu_textura_visible = False
         print("Modos reseteados")
     
     # Modos de edición
@@ -977,38 +1221,43 @@ def teclado(key, x, y):
         app.modo_edicion = 'colocar_camara'
         app.modal_placing = True
         app.selection_mode = False
+        app.submenu_textura_visible = False
         print("Modo: Colocar cámara - Click en el terreno")
     
     elif k == 'l':  # Colocar luz
         app.modo_edicion = 'colocar_luz'
         app.modal_placing = True
         app.selection_mode = False
+        app.submenu_textura_visible = False
         print("Modo: Colocar luz - Click en el terreno")
     
     elif k == 'b':  # Colocar cubo
         app.modo_edicion = 'colocar_cubo'
         app.modal_placing = True
         app.selection_mode = False
+        app.submenu_textura_visible = False
         print("Modo: Colocar cubo - Click en el terreno")
     
-    elif k == 's':  # Modo selección
-        app.selection_mode = True
-        app.modal_placing = False
-        app.modo_edicion = None
-        print("Modo: Selección - Click derecho en objetos")
-    
-    # Nuevos modos para esfera y torus
     elif k == 'p':  # Colocar esfera
         app.modo_edicion = 'colocar_esfera'
         app.modal_placing = True
         app.selection_mode = False
+        app.submenu_textura_visible = False
         print("Modo: Colocar esfera - Click en el terreno")
     
     elif k == 't':  # Colocar torus
         app.modo_edicion = 'colocar_torus'
         app.modal_placing = True
         app.selection_mode = False
+        app.submenu_textura_visible = False
         print("Modo: Colocar torus - Click en el terreno")
+    
+    elif k == 's':  # Modo selección
+        app.selection_mode = True
+        app.modal_placing = False
+        app.modo_edicion = None
+        app.submenu_textura_visible = False
+        print("Modo: Selección - Click derecho en objetos")
     
     # Transformación de objetos seleccionados
     if app.objeto_seleccionado is not None:
@@ -1017,20 +1266,24 @@ def teclado(key, x, y):
             app.rotando = False
             app.escalando = False
             app.cara_seleccionada = None
+            app.submenu_textura_visible = False
             print("Modo: Mover objeto (mouse o flechas)")
         elif k == 'r':  # Rotar
             app.rotando = True
             app.dragging = False
             app.escalando = False
             app.cara_seleccionada = None
+            app.submenu_textura_visible = False
             print("Modo: Rotar objeto (flechas del teclado)")
         elif k == 'e':  # Escalar
             app.escalando = True
             app.dragging = False
             app.rotando = False
+            app.submenu_textura_visible = False
             print("Modo: Escalar objeto (flechas o mouse)")
         elif k == 'x':  # Eliminar
             eliminar_objeto_seleccionado()
+            app.submenu_textura_visible = False
             print("Objeto eliminado")
     
     # Visualización
@@ -1056,6 +1309,10 @@ def teclado(key, x, y):
     elif k == '3':  # Toggle textura
         app.textura_habilitada = not app.textura_habilitada
         print(f"Textura del terreno {'activada' if app.textura_habilitada else 'desactivada'}")
+    
+    elif k == '4':  # Toggle textura objetos
+        app.textura_objetos_habilitada = not app.textura_objetos_habilitada
+        print(f"Textura de objetos {'activada' if app.textura_objetos_habilitada else 'desactivada'}")
     
     glutPostRedisplay()
 
@@ -1153,46 +1410,40 @@ def mouse(btn, estado, x, y):
                 app.selection_mode = True
                 app.modal_placing = False
                 app.modo_edicion = None
+                app.submenu_textura_visible = False
                 print("Modo: Selección")
             elif 120 <= x <= 220:  # Botón Cámara
                 app.modo_edicion = 'colocar_camara'
                 app.modal_placing = True
                 app.selection_mode = False
+                app.submenu_textura_visible = False
                 print("Modo: Colocar cámara")
             elif 230 <= x <= 330:  # Botón Luz
                 app.modo_edicion = 'colocar_luz'
                 app.modal_placing = True
                 app.selection_mode = False
+                app.submenu_textura_visible = False
                 print("Modo: Colocar luz")
             elif 340 <= x <= 440:  # Botón Cubo
                 app.modo_edicion = 'colocar_cubo'
                 app.modal_placing = True
                 app.selection_mode = False
+                app.submenu_textura_visible = False
                 print("Modo: Colocar cubo")
             elif 450 <= x <= 550:  # Botón Esfera
                 app.modo_edicion = 'colocar_esfera'
                 app.modal_placing = True
                 app.selection_mode = False
+                app.submenu_textura_visible = False
                 print("Modo: Colocar esfera")
             elif 560 <= x <= 660:  # Botón Torus
                 app.modo_edicion = 'colocar_torus'
                 app.modal_placing = True
                 app.selection_mode = False
+                app.submenu_textura_visible = False
                 print("Modo: Colocar torus")
             elif 670 <= x <= 770:  # Botón Textura
-                # Abrir diálogo para seleccionar textura
-                from tkinter import Tk, filedialog
-                root = Tk()
-                root.withdraw()
-                file_path = filedialog.askopenfilename(title="Seleccionar textura", 
-                                                      filetypes=[("Image files", "*.jpg;*.jpeg;*.png")])
-                if file_path:
-                    if app.textura_terreno:
-                        glDeleteTextures([app.textura_terreno])
-                    app.textura_terreno = cargar_textura(file_path)
-                    app.textura_habilitada = True
-                    app.textura_path = file_path
-                    print(f"Textura cargada: {file_path}")
+                app.submenu_textura_visible = not app.submenu_textura_visible
             elif 780 <= x <= 880:  # Botón Eliminar
                 if app.objeto_seleccionado is not None:
                     eliminar_objeto_seleccionado()
@@ -1206,12 +1457,28 @@ def mouse(btn, estado, x, y):
                 print("Vista libre")
             glutPostRedisplay()
             return
+        elif app.submenu_textura_visible and 670 <= x <= 870 and 40 <= y <= 80:
+            # Submenú de textura
+            if 680 <= x <= 830:  # Ancho aproximado de las opciones
+                if 50 <= y <= 60:  # Aplicar Color
+                    aplicar_color_objeto()
+                elif 70 <= y <= 80:  # Aplicar Textura
+                    aplicar_textura_objeto()
+            app.submenu_textura_visible = False
+            glutPostRedisplay()
+            return
         
         # Detectar cara para escalado si estamos en modo escalado
-        if app.escalando and app.tipo_seleccion == 'cubo':
-            app.cara_seleccionada = detectar_cara_cubo(x, y)
+        if app.escalando:
+            if app.tipo_seleccion == 'cubo':
+                app.cara_seleccionada = detectar_cara_cubo(x, y)
+            elif app.tipo_seleccion == 'esfera':
+                app.cara_seleccionada = detectar_cara_esfera(x, y)
+            elif app.tipo_seleccion == 'torus':
+                app.cara_seleccionada = detectar_cara_torus(x, y)
+            
             if app.cara_seleccionada:
-                print(f"Cara seleccionada para escalado: {app.cara_seleccionada}")
+                print(f"Dirección seleccionada para escalado: {app.cara_seleccionada}")
     
     # Liberación de botón
     elif btn == GLUT_LEFT_BUTTON and estado == GLUT_UP:
@@ -1248,25 +1515,28 @@ def motion(x, y):
             elif app.tipo_seleccion == 'cubo':
                 cubo = app.cubos[app.objeto_seleccionado]
                 cubo['pos'][0] = pos[0]
+                cubo['pos'][1] = pos[1] if pos[1] > 0 else 0  # No permitir valores negativos en Y
                 cubo['pos'][2] = pos[2]
             
             elif app.tipo_seleccion == 'esfera':
                 esfera = app.esferas[app.objeto_seleccionado]
                 esfera['pos'][0] = pos[0]
+                esfera['pos'][1] = pos[1] if pos[1] > 0 else 0  # No permitir valores negativos en Y
                 esfera['pos'][2] = pos[2]
             
             elif app.tipo_seleccion == 'torus':
                 torus = app.torus[app.objeto_seleccionado]
                 torus['pos'][0] = pos[0]
+                torus['pos'][1] = pos[1] if pos[1] > 0 else 0  # No permitir valores negativos en Y
                 torus['pos'][2] = pos[2]
         
         glutPostRedisplay()
         return
     
-    # Escalado por cara específica
-    elif app.escalando and app.cara_seleccionada and app.tipo_seleccion == 'cubo':
+    # Escalado por dirección específica
+    elif app.escalando and app.cara_seleccionada:
         # Usar movimiento vertical del mouse para escalado
-        escalar_cara_cubo(app.cara_seleccionada, -dy)
+        escalar_objeto(app.cara_seleccionada, -dy)
         glutPostRedisplay()
         return
     
@@ -1306,12 +1576,15 @@ def abrir_ventana_3d():
     print("=== TRANSFORMACIONES (con objeto seleccionado) ===")
     print("G - MOVER: Mouse o flechas del teclado")
     print("R - ROTAR: Flechas del teclado")  
-    print("E - ESCALAR: Flechas (uniforme) o mouse en caras (cubos)")
+    print("E - ESCALAR: Flechas (uniforme) o mouse en direcciones (no uniforme)")
     print("X - Eliminar objeto")
     print("")
     print("=== TEXTURAS ===")
     print("3 - Alternar textura del terreno")
-    print("Click en botón Textura para cargar imagen")
+    print("4 - Alternar textura de objetos")
+    print("Click en botón Textura para:")
+    print("  - Aplicar Color: Cambiar color del objeto seleccionado")
+    print("  - Aplicar Textura: Cargar imagen como textura para el objeto")
     print("")
     print("=== OTROS ===")
     print("V - Cambiar vista cámara/libre")
