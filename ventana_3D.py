@@ -3,6 +3,9 @@ from OpenGL.GL import *
 from OpenGL.GLU import *
 from OpenGL.GLUT import *
 from OpenGL.GLUT import GLUT_BITMAP_9_BY_15
+from OpenGL.GLUT import GLUT_KEY_UP, GLUT_KEY_DOWN, GLUT_KEY_LEFT, GLUT_KEY_RIGHT
+from juego import dibujar_escena_juego
+
 import sys
 import math
 import numpy as np
@@ -13,6 +16,15 @@ from tkinter import colorchooser, filedialog
 # Estados de la aplicación
 class AppState:
     def __init__(self):
+
+        self.modo_juego = False
+
+        self.back_face_culling = True  # Eliminación de caras traseras
+        self.z_buffer_activo = True    # Z-buffer para superficies ocultas
+        self.mostrar_normales = False  # Mostrar vectores normales
+        self.algoritmo_ocultas = "z_buffer"  # Algoritmo actual
+        self.submenu_ocultas_visible = False
+
         self.salir_ventana = False
         self.ventana_activa = True
         self.WIDTH, self.HEIGHT = 1200, 800
@@ -108,7 +120,7 @@ def cargar_textura(ruta_imagen):
         glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR)
         
         glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, imagen.width, imagen.height, 
-                     0, GL_RGBA, GL_UNSIGNED_BYTE, datos)
+                        0, GL_RGBA, GL_UNSIGNED_BYTE, datos)
         
         return textura_id
     except Exception as e:
@@ -118,13 +130,19 @@ def cargar_textura(ruta_imagen):
 def init():
     glClearColor(0.1, 0.1, 0.1, 1.0)
     glEnable(GL_DEPTH_TEST)
+    
+    
+    glDepthFunc(GL_LESS)  # Función de comparación Z-buffer
+    glEnable(GL_CULL_FACE)  # Habilitar eliminación de caras
+    glCullFace(GL_BACK)     # Eliminar caras traseras
+    glFrontFace(GL_CCW)     # Orientación antihoraria para caras frontales
+    
+    # (resto de tu función init sin cambios)
     glEnable(GL_LIGHTING)
     configurar_luz_global()
     glEnable(GL_COLOR_MATERIAL)
     glColorMaterial(GL_FRONT_AND_BACK, GL_AMBIENT_AND_DIFFUSE)
     glShadeModel(GL_SMOOTH)
-    
-    # Habilitar texturas
     glEnable(GL_TEXTURE_2D)
 
 def configurar_proyeccion():
@@ -264,7 +282,7 @@ def dibujar_manipuladores_escalado(pos, escala):
     glPopMatrix()
     glEnable(GL_LIGHTING)
 
-def dibujar_cubo(pos, escala=(1,1,1), rotacion=(0,0,0), seleccionado=False):
+def dibujar_cubo(pos, escala=(1,1,1), rotacion=(0,0,0), color=(0.6, 0.6, 0.6), seleccionado=False):
     glPushMatrix()
     glTranslatef(*pos)
     glRotatef(rotacion[0], 1, 0, 0)
@@ -290,27 +308,36 @@ def dibujar_cubo(pos, escala=(1,1,1), rotacion=(0,0,0), seleccionado=False):
         glEnd()
         glEnable(GL_LIGHTING)
     else:
+        # Aplicar color/textura según configuración
         if app.textura_cubo and app.textura_objetos_habilitada:
             glEnable(GL_TEXTURE_2D)
             glBindTexture(GL_TEXTURE_2D, app.textura_cubo)
-            glColor3f(1, 1, 1)
+            glColor3f(1, 1, 1)  # Color blanco para textura
         else:
             glDisable(GL_TEXTURE_2D)
-            glColor3f(0.6, 0.6, 0.6)
+            glColor3f(*color)  # Usar color pasado como parámetro
         
+        # Modo de visualización
         if app.modo_visualizacion == "wireframe":
+            glPolygonMode(GL_FRONT_AND_BACK, GL_LINE)
             glutWireCube(1.0)
-        else:
+        elif app.modo_visualizacion == "puntos":
+            glPolygonMode(GL_FRONT_AND_BACK, GL_POINT)
+            glPointSize(3)
+            glutSolidCube(1.0)
+        else:  # modo sólido
+            glPolygonMode(GL_FRONT_AND_BACK, GL_FILL)
             glutSolidCube(1.0)
     
     glDisable(GL_TEXTURE_2D)
+    glPolygonMode(GL_FRONT_AND_BACK, GL_FILL)
     glPopMatrix()
     
     # Dibujar manipuladores de escalado si está seleccionado y en modo escalado
     if seleccionado and app.escalando and app.tipo_seleccion == 'cubo':
         dibujar_manipuladores_escalado(pos, escala)
 
-def dibujar_esfera(pos, escala=(1,1,1), rotacion=(0,0,0), seleccionada=False):
+def dibujar_esfera(pos, escala=(1,1,1), rotacion=(0,0,0), color=(0.6, 0.2, 0.2), seleccionada=False):
     glPushMatrix()
     glTranslatef(*pos)
     glRotatef(rotacion[0], 1, 0, 0)
@@ -342,12 +369,17 @@ def dibujar_esfera(pos, escala=(1,1,1), rotacion=(0,0,0), seleccionada=False):
             glColor3f(1, 1, 1)
         else:
             glDisable(GL_TEXTURE_2D)
-            glColor3f(0.6, 0.2, 0.2)
+            glColor3f(*color)
         
+        # Modo de visualización
         if app.modo_visualizacion == "wireframe":
+            glPolygonMode(GL_FRONT_AND_BACK, GL_LINE)
             glutWireSphere(0.5, 20, 20)
-        else:
-            # Para esferas texturizadas necesitamos implementar nuestras propias coordenadas de textura
+        elif app.modo_visualizacion == "puntos":
+            glPolygonMode(GL_FRONT_AND_BACK, GL_POINT)
+            glPointSize(3)
+            glutSolidSphere(0.5, 20, 20)
+        else:  # modo sólido
             if app.textura_esfera and app.textura_objetos_habilitada:
                 quad = gluNewQuadric()
                 gluQuadricTexture(quad, GL_TRUE)
@@ -357,9 +389,10 @@ def dibujar_esfera(pos, escala=(1,1,1), rotacion=(0,0,0), seleccionada=False):
                 glutSolidSphere(0.5, 20, 20)
     
     glDisable(GL_TEXTURE_2D)
+    glPolygonMode(GL_FRONT_AND_BACK, GL_FILL)
     glPopMatrix()
 
-def dibujar_torus(pos, escala=(1,1,1), rotacion=(0,0,0), seleccionado=False):
+def dibujar_torus(pos, escala=(1,1,1), rotacion=(0,0,0), color=(0.2, 0.6, 0.2), seleccionado=False):
     glPushMatrix()
     glTranslatef(*pos)
     glRotatef(rotacion[0], 1, 0, 0)
@@ -391,14 +424,21 @@ def dibujar_torus(pos, escala=(1,1,1), rotacion=(0,0,0), seleccionado=False):
             glColor3f(1, 1, 1)
         else:
             glDisable(GL_TEXTURE_2D)
-            glColor3f(0.2, 0.6, 0.2)
+            glColor3f(*color)
         
+        # Modo de visualización
         if app.modo_visualizacion == "wireframe":
+            glPolygonMode(GL_FRONT_AND_BACK, GL_LINE)
             glutWireTorus(0.2, 0.5, 20, 20)
-        else:
+        elif app.modo_visualizacion == "puntos":
+            glPolygonMode(GL_FRONT_AND_BACK, GL_POINT)
+            glPointSize(3)
+            glutSolidTorus(0.2, 0.5, 20, 20)
+        else:  # modo sólido
             glutSolidTorus(0.2, 0.5, 20, 20)
     
     glDisable(GL_TEXTURE_2D)
+    glPolygonMode(GL_FRONT_AND_BACK, GL_FILL)
     glPopMatrix()
 
 def dibujar_camara(pos, look_at, up, escala=(1,1,1), rotacion=(0,0,0), seleccionada=False):
@@ -409,50 +449,115 @@ def dibujar_camara(pos, look_at, up, escala=(1,1,1), rotacion=(0,0,0), seleccion
     glRotatef(rotacion[2], 0, 0, 1)
     glScalef(*escala)
     
+    # Calcular orientación hacia el punto look_at
     dx, dy, dz = look_at[0]-pos[0], look_at[1]-pos[1], look_at[2]-pos[2]
-    angulo = math.degrees(math.atan2(dx, dz))
-    glRotatef(angulo, 0, 1, 0)
+    distancia = math.sqrt(dx*dx + dy*dy + dz*dz)
+    if distancia > 0.001:  # Evitar división por cero
+        angulo = math.degrees(math.atan2(dx, dz))
+        glRotatef(angulo, 0, 1, 0)
     
     glDisable(GL_LIGHTING)
     
     if seleccionada:
-        glColor3f(1.0, 0.0, 0.0)
-        glPolygonMode(GL_FRONT_AND_BACK, GL_LINE)
+        glColor3f(1.0, 0.0, 0.0)  # Rojo para seleccionada
         glLineWidth(4)
         
-        glLineWidth(2)
+        # Dibujar ejes de transformación cuando está seleccionada
         glBegin(GL_LINES)
         glColor3f(1, 0, 0); glVertex3f(0, 0, 0); glVertex3f(1.5, 0, 0)
         glColor3f(0, 1, 0); glVertex3f(0, 0, 0); glVertex3f(0, 1.5, 0)
         glColor3f(0, 0, 1); glVertex3f(0, 0, 0); glVertex3f(0, 0, 1.5)
         glEnd()
     else:
-        glColor3f(0.2, 0.2, 0.8)
+        glColor3f(0.2, 0.2, 0.8)  # Azul para cámara normal
+        glLineWidth(2)
     
-    # Dibujar cuadrado (cuerpo de la cámara)
+    # 1. Dibujar cuerpo principal de la cámara (cubo)
     glBegin(GL_QUADS)
-    glVertex3f(-0.3, -0.3, 0)
-    glVertex3f(0.3, -0.3, 0)
-    glVertex3f(0.3, 0.3, 0)
-    glVertex3f(-0.3, 0.3, 0)
+    # Cara frontal
+    glVertex3f(-0.3, -0.3, 0.1)
+    glVertex3f(0.3, -0.3, 0.1)
+    glVertex3f(0.3, 0.3, 0.1)
+    glVertex3f(-0.3, 0.3, 0.1)
+    # Cara trasera
+    glVertex3f(-0.3, -0.3, -0.1)
+    glVertex3f(-0.3, 0.3, -0.1)
+    glVertex3f(0.3, 0.3, -0.1)
+    glVertex3f(0.3, -0.3, -0.1)
+    # Cara superior
+    glVertex3f(-0.3, 0.3, -0.1)
+    glVertex3f(-0.3, 0.3, 0.1)
+    glVertex3f(0.3, 0.3, 0.1)
+    glVertex3f(0.3, 0.3, -0.1)
+    # Cara inferior
+    glVertex3f(-0.3, -0.3, -0.1)
+    glVertex3f(0.3, -0.3, -0.1)
+    glVertex3f(0.3, -0.3, 0.1)
+    glVertex3f(-0.3, -0.3, 0.1)
+    # Cara izquierda
+    glVertex3f(-0.3, -0.3, -0.1)
+    glVertex3f(-0.3, -0.3, 0.1)
+    glVertex3f(-0.3, 0.3, 0.1)
+    glVertex3f(-0.3, 0.3, -0.1)
+    # Cara derecha
+    glVertex3f(0.3, -0.3, -0.1)
+    glVertex3f(0.3, 0.3, -0.1)
+    glVertex3f(0.3, 0.3, 0.1)
+    glVertex3f(0.3, -0.3, 0.1)
     glEnd()
     
-    # Dibujar círculo (lente)
-    glColor3f(0.8, 0.8, 0.2)
+    # 2. Dibujar lente (cilindro frontal)
+    glColor3f(0.1, 0.1, 0.1)  # Negro para el lente
     glBegin(GL_TRIANGLE_FAN)
-    glVertex3f(0, 0, -0.1)
-    for i in range(33):
-        ang = i * 2 * math.pi / 32
-        glVertex3f(0.15 * math.cos(ang), 0.15 * math.sin(ang), -0.1)
+    glVertex3f(0, 0, 0.15)  # Centro del lente
+    for i in range(17):  # 16 segmentos + 1 para cerrar
+        ang = i * 2 * math.pi / 16
+        x = 0.2 * math.cos(ang)
+        y = 0.2 * math.sin(ang)
+        glVertex3f(x, y, 0.15)
     glEnd()
     
-    # Línea de visión
-    glColor3f(1, 0, 0)
+    # 3. Dibujar aro del lente
+    glColor3f(0.8, 0.8, 0.2) if not seleccionada else glColor3f(1, 0, 0)
+    glBegin(GL_TRIANGLE_STRIP)
+    for i in range(17):  # 16 segmentos + 1 para cerrar
+        ang = i * 2 * math.pi / 16
+        x_ext = 0.25 * math.cos(ang)
+        y_ext = 0.25 * math.sin(ang)
+        x_int = 0.2 * math.cos(ang)
+        y_int = 0.2 * math.sin(ang)
+        glVertex3f(x_ext, y_ext, 0.12)
+        glVertex3f(x_int, y_int, 0.12)
+    glEnd()
+    
+    # 4. Dibujar línea de dirección (hacia dónde apunta)
+    glColor3f(1, 0, 0) if seleccionada else glColor3f(0, 1, 0)
+    glLineWidth(3)
     glBegin(GL_LINES)
-    glVertex3f(0, 0, 0)
-    glVertex3f(0, 0, -0.5)
+    glVertex3f(0, 0, 0.15)
+    glVertex3f(0, 0, -1.0)  # Línea más larga para mejor visualización
     glEnd()
     
+    # 5. Flecha en la punta de la línea de dirección
+    glBegin(GL_TRIANGLES)
+    glVertex3f(0, 0, -1.0)
+    glVertex3f(-0.1, 0.1, -0.8)
+    glVertex3f(0.1, 0.1, -0.8)
+    
+    glVertex3f(0, 0, -1.0)
+    glVertex3f(-0.1, -0.1, -0.8)
+    glVertex3f(0.1, -0.1, -0.8)
+    glEnd()
+    
+    # 6. Etiqueta "CAM" si no está seleccionada
+    if not seleccionada:
+        glColor3f(1, 1, 1)
+        glRasterPos3f(-0.15, 0.4, 0)
+        texto = "CAM"
+        for char in texto:
+            glutBitmapCharacter(GLUT_BITMAP_9_BY_15, ord(char))
+    
+    glLineWidth(1)
     glEnable(GL_LIGHTING)
     glPopMatrix()
 
@@ -497,13 +602,16 @@ def dibujar_luz(pos, color, tipo, escala=(1,1,1), rotacion=(0,0,0), seleccionada
     glPopMatrix()
 
 def dibujar_barra_herramientas():
+    # Guardar estado actual
     glMatrixMode(GL_PROJECTION)
     glPushMatrix()
     glLoadIdentity()
     gluOrtho2D(0, app.WIDTH, app.HEIGHT, 0)
+    
     glMatrixMode(GL_MODELVIEW)
     glPushMatrix()
     glLoadIdentity()
+    
     glDisable(GL_DEPTH_TEST)
     glDisable(GL_LIGHTING)
 
@@ -516,10 +624,10 @@ def dibujar_barra_herramientas():
     glVertex2f(0, 40)
     glEnd()
 
-    # Botones (ahora incluyendo esfera y torus)
+    # Botones principales
     botones = [
         ("Seleccionar", 10, app.selection_mode),
-        ("Cámara", 120, app.modo_edicion == 'colocar_camara'),
+        ("Camara", 120, app.modo_edicion == 'colocar_camara'),
         ("Luz", 230, app.modo_edicion == 'colocar_luz'),
         ("Cubo", 340, app.modo_edicion == 'colocar_cubo'),
         ("Esfera", 450, app.modo_edicion == 'colocar_esfera'),
@@ -527,7 +635,9 @@ def dibujar_barra_herramientas():
         ("Textura", 670, False),
         ("Eliminar", 780, False),
         ("Vista Cam", 890, app.camara_actual is not None),
-        ("Vista Libre", 1000, app.camara_actual is None)
+        ("Vista Libre", 1000, app.camara_actual is None),
+        ("Ocultas", 1110, False),
+        ("Juego", 1220, app.modo_juego)
     ]
     
     for nombre, x, activo in botones:
@@ -548,19 +658,70 @@ def dibujar_barra_herramientas():
         for c in nombre:
             glutBitmapCharacter(GLUT_BITMAP_9_BY_15, ord(c))
 
-    # Dibujar submenú de textura si está visible
+    # Submenú de caras ocultas
+    if app.submenu_ocultas_visible:
+        glColor3f(0.2, 0.3, 0.4)
+        glBegin(GL_QUADS)
+        glVertex2f(1110, 40)
+        glVertex2f(1110+180, 40)
+        glVertex2f(1110+180, 160)
+        glVertex2f(1110, 160)
+        glEnd()
+        
+        opciones_ocultas = [
+            (f"Z-Buffer: {'ON' if app.z_buffer_activo else 'OFF'}", 1120, 55),
+            (f"Back-Face: {'ON' if app.back_face_culling else 'OFF'}", 1120, 75),
+            (f"Normales: {'ON' if app.mostrar_normales else 'OFF'}", 1120, 95),
+            ("Wireframe", 1120, 115),
+            ("Solido", 1120, 135),
+            ("Puntos", 1120, 155)
+        ]
+        
+        for texto, x, y in opciones_ocultas:
+            glColor3f(1, 1, 1)
+            glRasterPos2f(x, y)
+            for c in texto:
+                glutBitmapCharacter(GLUT_BITMAP_9_BY_15, ord(c))
+
+    # Submenú de textura
     if app.submenu_textura_visible:
-        glColor3f(0.3, 0.3, 0.4)
+        # Fondo del submenú
+        glColor3f(0.25, 0.25, 0.35)
         glBegin(GL_QUADS)
         glVertex2f(670, 40)
         glVertex2f(870, 40)
-        glVertex2f(870, 80)
-        glVertex2f(670, 80)
+        glVertex2f(870, 100)
+        glVertex2f(670, 100)
         glEnd()
         
+        # Separador entre opciones
+        glColor3f(0.4, 0.4, 0.5)
+        glBegin(GL_LINES)
+        glVertex2f(675, 70)
+        glVertex2f(865, 70)
+        glEnd()
+        
+        # Resaltar área de "Aplicar Color"
+        glColor3f(0.35, 0.35, 0.45)
+        glBegin(GL_QUADS)
+        glVertex2f(675, 45)
+        glVertex2f(865, 45)
+        glVertex2f(865, 65)
+        glVertex2f(675, 65)
+        glEnd()
+        
+        # Resaltar área de "Aplicar Textura"
+        glBegin(GL_QUADS)
+        glVertex2f(675, 75)
+        glVertex2f(865, 75)
+        glVertex2f(865, 95)
+        glVertex2f(675, 95)
+        glEnd()
+        
+        # Texto de las opciones
         opciones = [
-            ("Aplicar Color", 680, 50),
-            ("Aplicar Textura", 680, 70)
+            ("Aplicar Color", 680, 58),
+            ("Aplicar Textura", 680, 88)
         ]
         
         for texto, x, y in opciones:
@@ -569,11 +730,13 @@ def dibujar_barra_herramientas():
             for c in texto:
                 glutBitmapCharacter(GLUT_BITMAP_9_BY_15, ord(c))
 
+    # Restaurar estado
     glEnable(GL_DEPTH_TEST)
     glEnable(GL_LIGHTING)
-    glPopMatrix()
+    
+    glPopMatrix()  # MODELVIEW
     glMatrixMode(GL_PROJECTION)
-    glPopMatrix()
+    glPopMatrix()  # PROJECTION
     glMatrixMode(GL_MODELVIEW)
 
 def obtener_posicion_3d(x, y):
@@ -584,8 +747,8 @@ def obtener_posicion_3d(x, y):
     if app.camara_actual is not None and app.camaras:
         cam = app.camaras[app.camara_actual]
         gluLookAt(cam['pos'][0], cam['pos'][1], cam['pos'][2],
-                 cam['look_at'][0], cam['look_at'][1], cam['look_at'][2],
-                 cam['up'][0], cam['up'][1], cam['up'][2])
+                    cam['look_at'][0], cam['look_at'][1], cam['look_at'][2],
+                    cam['up'][0], cam['up'][1], cam['up'][2])
     else:
         gluLookAt(5, 5, 10, 0, 0, 0, 0, 1, 0)
         glRotatef(app.angulo_x, 1, 0, 0)
@@ -643,13 +806,14 @@ def seleccionar_objeto(x, y):
     if app.camara_actual is not None and app.camaras:
         cam = app.camaras[app.camara_actual]
         gluLookAt(cam['pos'][0], cam['pos'][1], cam['pos'][2],
-                 cam['look_at'][0], cam['look_at'][1], cam['look_at'][2],
-                 cam['up'][0], cam['up'][1], cam['up'][2])
+                    cam['look_at'][0], cam['look_at'][1], cam['look_at'][2],
+                    cam['up'][0], cam['up'][1], cam['up'][2])
     else:
         gluLookAt(5, 5, 10, 0, 0, 0, 0, 1, 0)
         glRotatef(app.angulo_x, 1, 0, 0)
         glRotatef(app.angulo_y, 0, 1, 0)
     
+    # CAMARAS - tipo 1
     for i, cam in enumerate(app.camaras):
         glPushName(1)
         glPushName(i)
@@ -657,6 +821,7 @@ def seleccionar_objeto(x, y):
         glPopName()
         glPopName()
     
+    # LUCES - tipo 2
     for i, luz in enumerate(app.luces):
         glPushName(2)
         glPushName(i)
@@ -664,27 +829,30 @@ def seleccionar_objeto(x, y):
         glPopName()
         glPopName()
     
+    # CUBOS - tipo 3
     for i, cubo in enumerate(app.cubos):
         glPushName(3)
         glPushName(i)
-        dibujar_cubo(cubo['pos'], cubo['escala'], cubo['rotacion'], False)
+        dibujar_cubo(cubo['pos'], cubo['escala'], cubo['rotacion'], cubo['color'], False)
         glPopName()
         glPopName()
     
+    # ESFERAS - tipo 4 (CORREGIDO)
     for i, esfera in enumerate(app.esferas):
         glPushName(4)
         glPushName(i)
-        dibujar_esfera(esfera['pos'], esfera['escala'], esfera['rotacion'], False)
+        dibujar_esfera(esfera['pos'], esfera['escala'], esfera['rotacion'], esfera['color'], False)
         glPopName()
         glPopName()
     
+    # TORUS - tipo 5 (CORREGIDO)
     for i, torus in enumerate(app.torus):
         glPushName(5)
         glPushName(i)
-        dibujar_torus(torus['pos'], torus['escala'], torus['rotacion'], False)
+        dibujar_torus(torus['pos'], torus['escala'], torus['rotacion'], torus['color'], False)
         glPopName()
         glPopName()
-    
+        
     glMatrixMode(GL_PROJECTION)
     glPopMatrix()
     glMatrixMode(GL_MODELVIEW)
@@ -772,7 +940,7 @@ def agregar_cubo(posicion):
         'pos': [posicion[0], 0.5, posicion[2]],
         'escala': [1.0, 1.0, 1.0],
         'rotacion': [0.0, 0.0, 0.0],
-        'color': [0.8, 0.2, 0.2]
+        'color': [0.8, 0.2, 0.2]  # Rojo oscuro
     }
     app.cubos.append(nuevo_cubo)
     app.objeto_seleccionado = len(app.cubos) - 1
@@ -784,7 +952,7 @@ def agregar_esfera(posicion):
         'pos': [posicion[0], 0.5, posicion[2]],
         'escala': [1.0, 1.0, 1.0],
         'rotacion': [0.0, 0.0, 0.0],
-        'color': [0.6, 0.2, 0.2]
+        'color': [0.6, 0.2, 0.2]  # Color inicial
     }
     app.esferas.append(nueva_esfera)
     app.objeto_seleccionado = len(app.esferas) - 1
@@ -796,7 +964,7 @@ def agregar_torus(posicion):
         'pos': [posicion[0], 0.5, posicion[2]],
         'escala': [1.0, 1.0, 1.0],
         'rotacion': [0.0, 0.0, 0.0],
-        'color': [0.2, 0.6, 0.2]
+        'color': [0.2, 0.6, 0.2]  # Color inicial
     }
     app.torus.append(nuevo_torus)
     app.objeto_seleccionado = len(app.torus) - 1
@@ -942,7 +1110,7 @@ def mostrar_coordenadas():
         
         if app.tipo_seleccion == 'camara':
             pos = app.camaras[app.objeto_seleccionado]['pos']
-            texto = f"Cámara seleccionada: X={pos[0]:.2f} Y={pos[1]:.2f} Z={pos[2]:.2f}"
+            texto = f"Camara seleccionada: X={pos[0]:.2f} Y={pos[1]:.2f} Z={pos[2]:.2f}"
         elif app.tipo_seleccion == 'luz':
             pos = app.luces[app.objeto_seleccionado]['pos']
             texto = f"Luz seleccionada: X={pos[0]:.2f} Y={pos[1]:.2f} Z={pos[2]:.2f}"
@@ -973,10 +1141,10 @@ def mostrar_coordenadas():
             glutBitmapCharacter(GLUT_BITMAP_9_BY_15, ord(char))
         
         glEnable(GL_LIGHTING)
-        glPopMatrix()
+        glPopMatrix()  # Restaurar MODELVIEW
         glMatrixMode(GL_PROJECTION)
-        glPopMatrix()
-        glMatrixMode(GL_MODELVIEW)
+        glPopMatrix()  # Restaurar PROJECTION
+        glMatrixMode(GL_MODELVIEW)  # Volver a MODELVIEW
 
 def mover_objeto_con_teclado(dx, dy, dz):
     """Función para mover objetos con las flechas del teclado"""
@@ -1086,25 +1254,45 @@ def escalar_objeto_con_teclado(factor):
 def aplicar_color_objeto():
     """Aplicar un color al objeto seleccionado"""
     if app.objeto_seleccionado is None:
+        print("No hay objeto seleccionado")
         return
+    
+    # Crear una ventana temporal de Tkinter para el color picker
+    root = tk.Tk()
+    root.withdraw()  # Ocultar la ventana principal
     
     # Abrir el selector de color
     color = colorchooser.askcolor(title="Seleccionar color")
+    root.destroy()  # Destruir la ventana temporal
+    
     if color[0] is None:  # El usuario canceló
+        print("Selección de color cancelada")
         return
     
     # Convertir el color de 0-255 a 0.0-1.0
     r, g, b = color[0]
-    color_normalizado = (r/255.0, g/255.0, b/255.0)
+    color_normalizado = [r/255.0, g/255.0, b/255.0]
     
-    if app.tipo_seleccion == 'cubo':
+    # Aplicar el color según el tipo de objeto
+    if app.tipo_seleccion == 'cubo' and 0 <= app.objeto_seleccionado < len(app.cubos):
         app.cubos[app.objeto_seleccionado]['color'] = color_normalizado
-    elif app.tipo_seleccion == 'esfera':
+        print(f"Color aplicado al cubo: {color_normalizado}")
+    elif app.tipo_seleccion == 'esfera' and 0 <= app.objeto_seleccionado < len(app.esferas):
         app.esferas[app.objeto_seleccionado]['color'] = color_normalizado
-    elif app.tipo_seleccion == 'torus':
+        print(f"Color aplicado a la esfera: {color_normalizado}")
+    elif app.tipo_seleccion == 'torus' and 0 <= app.objeto_seleccionado < len(app.torus):
         app.torus[app.objeto_seleccionado]['color'] = color_normalizado
+        print(f"Color aplicado al torus: {color_normalizado}")
+    elif app.tipo_seleccion == 'luz' and 0 <= app.objeto_seleccionado < len(app.luces):
+        app.luces[app.objeto_seleccionado]['color'] = color_normalizado + [1.0]  # Agregar alpha
+        configurar_luz(app.objeto_seleccionado)
+        print(f"Color aplicado a la luz: {color_normalizado}")
+    else:
+        print(f"No se puede aplicar color a objeto de tipo: {app.tipo_seleccion}")
     
-    print(f"Color aplicado: {color_normalizado}")
+    # Forzar actualización de la pantalla
+    glutPostRedisplay()
+
 
 def aplicar_textura_objeto():
     """Aplicar una textura al objeto seleccionado"""
@@ -1115,7 +1303,7 @@ def aplicar_textura_objeto():
     root = tk.Tk()
     root.withdraw()
     file_path = filedialog.askopenfilename(title="Seleccionar textura", 
-                                          filetypes=[("Image files", "*.jpg;*.jpeg;*.png")])
+                                        filetypes=[("Image files", "*.jpg *.jpeg *.png")])
     if not file_path:
         return
     
@@ -1140,15 +1328,147 @@ def aplicar_textura_objeto():
     
     print(f"Textura aplicada: {file_path}")
 
+def aplicar_eliminacion_ocultas():
+    """Aplicar configuraciones de eliminación de caras y líneas ocultas"""
+    
+    # Z-Buffer (eliminación de superficies ocultas)
+    if app.z_buffer_activo:
+        glEnable(GL_DEPTH_TEST)
+        glDepthFunc(GL_LESS)
+        glDepthMask(GL_TRUE)
+        glClear(GL_DEPTH_BUFFER_BIT)
+    else:
+        glDisable(GL_DEPTH_TEST)
+    
+    # Back-face culling (eliminación de caras traseras)
+    if app.back_face_culling:
+        glEnable(GL_CULL_FACE)
+        glCullFace(GL_BACK)
+        glFrontFace(GL_CCW)
+    else:
+        glDisable(GL_CULL_FACE)
+
+def dibujar_normales_objeto():
+    """Dibujar normales de los objetos para visualización"""
+    if not app.mostrar_normales or app.objeto_seleccionado is None:
+        return
+    
+    glDisable(GL_LIGHTING)
+    glColor3f(1, 1, 0)  # Amarillo para normales
+    glLineWidth(3)
+    
+    # Dibujar normales según el tipo de objeto seleccionado
+    if app.tipo_seleccion == 'cubo':
+        cubo = app.cubos[app.objeto_seleccionado]
+        dibujar_normales_cubo(cubo['pos'], cubo['escala'])
+    elif app.tipo_seleccion == 'esfera':
+        esfera = app.esferas[app.objeto_seleccionado]
+        dibujar_normales_esfera(esfera['pos'], esfera['escala'])
+    elif app.tipo_seleccion == 'torus':
+        torus = app.torus[app.objeto_seleccionado]
+        dibujar_normales_torus(torus['pos'], torus['escala'])
+    
+    glLineWidth(1)
+    glEnable(GL_LIGHTING)
+
+def dibujar_normales_cubo(pos, escala):
+    """Dibujar normales de las caras del cubo"""
+    glPushMatrix()
+    glTranslatef(*pos)
+    glScalef(*escala)
+    
+    # Normales de las 6 caras del cubo
+    normales = [
+        ([0.5, 0, 0], [1, 0, 0]),     # Cara derecha
+        ([-0.5, 0, 0], [-1, 0, 0]),   # Cara izquierda
+        ([0, 0.5, 0], [0, 1, 0]),     # Cara superior
+        ([0, -0.5, 0], [0, -1, 0]),   # Cara inferior
+        ([0, 0, 0.5], [0, 0, 1]),     # Cara frontal
+        ([0, 0, -0.5], [0, 0, -1])    # Cara trasera
+    ]
+    
+    glBegin(GL_LINES)
+    for centro, normal in normales:
+        glVertex3f(*centro)
+        glVertex3f(centro[0] + normal[0]*0.8, centro[1] + normal[1]*0.8, centro[2] + normal[2]*0.8)
+    glEnd()
+    
+    glPopMatrix()
+
+def dibujar_normales_esfera(pos, escala):
+    """Dibujar algunas normales de la esfera"""
+    glPushMatrix()
+    glTranslatef(*pos)
+    glScalef(*escala)
+    
+    glBegin(GL_LINES)
+    # Normales en algunos puntos de la esfera
+    for i in range(0, 360, 45):  # Cada 45 grados
+        for j in range(-90, 91, 45):  # De polo a polo
+            angulo_h = math.radians(i)
+            angulo_v = math.radians(j)
+            
+            # Punto en la superficie de la esfera
+            x = 0.5 * math.cos(angulo_v) * math.cos(angulo_h)
+            y = 0.5 * math.sin(angulo_v)
+            z = 0.5 * math.cos(angulo_v) * math.sin(angulo_h)
+            
+            # La normal apunta hacia afuera desde el centro
+            glVertex3f(x, y, z)
+            glVertex3f(x + x*0.6, y + y*0.6, z + z*0.6)
+    glEnd()
+    
+    glPopMatrix()
+
+def dibujar_normales_torus(pos, escala):
+    """Dibujar algunas normales del torus"""
+    glPushMatrix()
+    glTranslatef(*pos)
+    glScalef(*escala)
+    
+    glBegin(GL_LINES)
+    # Normales en algunos puntos del torus
+    for i in range(0, 360, 30):  # Alrededor del torus
+        for j in range(0, 360, 60):  # Alrededor del tubo
+            u = math.radians(i)
+            v = math.radians(j)
+            
+            # Parámetros del torus
+            R = 0.5  # Radio mayor
+            r = 0.2  # Radio menor
+            
+            # Punto en la superficie
+            x = (R + r * math.cos(v)) * math.cos(u)
+            y = r * math.sin(v)
+            z = (R + r * math.cos(v)) * math.sin(u)
+            
+            # Normal aproximada
+            nx = math.cos(v) * math.cos(u)
+            ny = math.sin(v)
+            nz = math.cos(v) * math.sin(u)
+            
+            glVertex3f(x, y, z)
+            glVertex3f(x + nx*0.4, y + ny*0.4, z + nz*0.4)
+    glEnd()
+    
+    glPopMatrix()
+
 def display():
     glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT)
     glLoadIdentity()
+
+    if app.modo_juego:
+        dibujar_escena_juego()
+        glutSwapBuffers()
+        return
+    
+    aplicar_eliminacion_ocultas()  # Aplicar configuraciones de eliminación
     
     if app.camara_actual is not None and app.camaras:
         cam = app.camaras[app.camara_actual]
         gluLookAt(cam['pos'][0], cam['pos'][1], cam['pos'][2],
-                 cam['look_at'][0], cam['look_at'][1], cam['look_at'][2],
-                 cam['up'][0], cam['up'][1], cam['up'][2])
+                    cam['look_at'][0], cam['look_at'][1], cam['look_at'][2],
+                    cam['up'][0], cam['up'][1], cam['up'][2])
     else:
         gluLookAt(5, 5, 10, 0, 0, 0, 0, 1, 0)
         glRotatef(app.angulo_x, 1, 0, 0)
@@ -1168,18 +1488,19 @@ def display():
     
     for i, cubo in enumerate(app.cubos):
         seleccionado = (app.objeto_seleccionado == i and app.tipo_seleccion == 'cubo')
-        glColor3f(*cubo['color'])
-        dibujar_cubo(cubo['pos'], cubo['escala'], cubo['rotacion'], seleccionado)
+        dibujar_cubo(cubo['pos'], cubo['escala'], cubo['rotacion'], cubo['color'], seleccionado)
     
+    # FIX: Correct function call for spheres
     for i, esfera in enumerate(app.esferas):
         seleccionada = (app.objeto_seleccionado == i and app.tipo_seleccion == 'esfera')
-        glColor3f(*esfera['color'])
-        dibujar_esfera(esfera['pos'], esfera['escala'], esfera['rotacion'], seleccionada)
+        dibujar_esfera(esfera['pos'], esfera['escala'], esfera['rotacion'], esfera['color'], seleccionada)
     
+    # FIX: Correct function call for torus
     for i, torus in enumerate(app.torus):
         seleccionado = (app.objeto_seleccionado == i and app.tipo_seleccion == 'torus')
-        glColor3f(*torus['color'])
-        dibujar_torus(torus['pos'], torus['escala'], torus['rotacion'], seleccionado)
+        dibujar_torus(torus['pos'], torus['escala'], torus['rotacion'], torus['color'], seleccionado)
+    
+    dibujar_normales_objeto()  # Dibujar normales si están habilitadas
     
     dibujar_barra_herramientas()
     mostrar_coordenadas()
@@ -1313,6 +1634,24 @@ def teclado(key, x, y):
     elif k == '4':  # Toggle textura objetos
         app.textura_objetos_habilitada = not app.textura_objetos_habilitada
         print(f"Textura de objetos {'activada' if app.textura_objetos_habilitada else 'desactivada'}")
+
+    elif k == '5':  # Toggle Z-buffer
+        app.z_buffer_activo = not app.z_buffer_activo
+        print(f"Z-Buffer {'activado' if app.z_buffer_activo else 'desactivado'}")
+    
+    elif k == '6':  # Toggle back-face culling
+        app.back_face_culling = not app.back_face_culling
+        print(f"Back-face culling {'activado' if app.back_face_culling else 'desactivado'}")
+    
+    elif k == '7':  # Toggle mostrar normales
+        app.mostrar_normales = not app.mostrar_normales
+        print(f"Mostrar normales {'activado' if app.mostrar_normales else 'desactivado'}")
+    
+    elif k == '8':  # Cambiar modo de visualización
+        modos = ["solido", "wireframe", "puntos"]
+        idx_actual = modos.index(app.modo_visualizacion)
+        app.modo_visualizacion = modos[(idx_actual + 1) % len(modos)]
+        print(f"Modo visualización: {app.modo_visualizacion}")
     
     glutPostRedisplay()
 
@@ -1404,6 +1743,7 @@ def mouse(btn, estado, x, y):
     
     # Clic izquierdo normal (para herramientas)
     elif btn == GLUT_LEFT_BUTTON and estado == GLUT_DOWN and not app.modal_placing:
+        
         # Verificar clic en barra de herramientas
         if y < 40:
             if 10 <= x <= 110:  # Botón Seleccionar
@@ -1455,15 +1795,51 @@ def mouse(btn, estado, x, y):
             elif 1000 <= x <= 1100:  # Botón Vista Libre
                 app.camara_actual = None
                 print("Vista libre")
-            glutPostRedisplay()
+            elif 1110 <= x <= 1210:  # Botón Ocultas
+                app.submenu_ocultas_visible = not app.submenu_ocultas_visible
+                app.submenu_textura_visible = False  # Cerrar otro submenú
+            elif 1220 <= x <= 1320:  # Botón Juego
+                app.modo_juego = not app.modo_juego
+                print(f"Modo juego {'activado' if app.modo_juego else 'desactivado'}")
+                glutPostRedisplay()
             return
-        elif app.submenu_textura_visible and 670 <= x <= 870 and 40 <= y <= 80:
-            # Submenú de textura
-            if 680 <= x <= 830:  # Ancho aproximado de las opciones
-                if 50 <= y <= 60:  # Aplicar Color
+        
+        elif app.submenu_ocultas_visible and 1110 <= x <= 1290 and 40 <= y <= 160:
+            if 1120 <= x <= 1280:  # Ancho de las opciones
+                if 55 <= y <= 65:  # Z-Buffer toggle
+                    app.z_buffer_activo = not app.z_buffer_activo
+                    print(f"Z-Buffer {'activado' if app.z_buffer_activo else 'desactivado'}")
+                elif 75 <= y <= 85:  # Back-face culling toggle
+                    app.back_face_culling = not app.back_face_culling
+                    print(f"Back-face culling {'activado' if app.back_face_culling else 'desactivado'}")
+                elif 95 <= y <= 105:  # Mostrar normales toggle
+                    app.mostrar_normales = not app.mostrar_normales
+                    print(f"Mostrar normales {'activado' if app.mostrar_normales else 'desactivado'}")
+                elif 115 <= y <= 125:  # Modo wireframe
+                    app.modo_visualizacion = "wireframe"
+                    print("Modo: Wireframe")
+                elif 135 <= y <= 145:  # Modo sólido
+                    app.modo_visualizacion = "solido"
+                    print("Modo: Sólido")
+                elif 155 <= y <= 165:  # Modo puntos
+                    app.modo_visualizacion = "puntos"
+                    print("Modo: Puntos")
+            app.submenu_ocultas_visible = False
+
+        elif app.submenu_textura_visible and 670 <= x <= 870 and 40 <= y <= 100:
+            # Submenú de textura con áreas más amplias
+            if 675 <= x <= 865:  # Área más amplia para las opciones
+                if 45 <= y <= 65:  # Aplicar Color - área más amplia
                     aplicar_color_objeto()
-                elif 70 <= y <= 80:  # Aplicar Textura
+                    app.submenu_textura_visible = False
+                    glutPostRedisplay()
+                    return
+                elif 65 <= y <= 85:  # Aplicar Textura - área más amplia
                     aplicar_textura_objeto()
+                    app.submenu_textura_visible = False
+                    glutPostRedisplay()
+                    return
+            # Solo cerrar si no se hizo clic en ninguna opción
             app.submenu_textura_visible = False
             glutPostRedisplay()
             return
@@ -1485,6 +1861,7 @@ def mouse(btn, estado, x, y):
         if app.dragging:
             print("Movimiento finalizado")
         app.cara_seleccionada = None
+        
 
 def motion(x, y):
     dx = x - app.mouse_anterior[0]
