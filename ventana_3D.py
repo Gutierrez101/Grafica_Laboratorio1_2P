@@ -1265,6 +1265,12 @@ def seleccionar_objeto(x, y):
             dibujar_casa(figura['pos'], figura['escala'], figura['rotacion'], figura['color'], False)
         elif figura['tipo'] == 'montana':
             dibujar_montana(figura['pos'], figura['escala'], figura['rotacion'], figura['color'], False)
+        elif figura['tipo'] == 'esponja_menger':
+            dibujar_esponja_menger(figura['pos'], figura['nivel'], figura['escala'][0], figura['color'])
+        elif figura['tipo'] == 'arbol_fractal':
+            dibujar_arbol_fractal(figura['pos'], figura['nivel'], 30, figura['escala'][0], figura['color'])
+        elif figura['tipo'] == 'sierpinski':
+            dibujar_tetraedro_sierpinski(figura['pos'], figura['nivel'], figura['escala'][0], figura['color'])
         glPopName()
         glPopName()
         
@@ -1340,9 +1346,11 @@ def agregar_luz(posicion):
     configurar_luz(app.objeto_seleccionado)
     print(f"Luz agregada en: {posicion}")
 
+#Funcion paea agregar figuras al terreno
 def agregar_figura(posicion, tipo_figura):
+    altura=0.5 if tipo_figura =='casa' else 0.5
     nueva_figura = {
-        'pos': [posicion[0], 0.5, posicion[2]],
+        'pos': [posicion[0], altura, posicion[2]],
         'escala': [1.0, 1.0, 1.0],
         'rotacion': [0.0, 0.0, 0.0],
         'color': [0.8, 0.2, 0.2],  # Color inicial
@@ -1354,6 +1362,7 @@ def agregar_figura(posicion, tipo_figura):
     app.tipo_seleccion = 'figura'
     print(f"Figura {tipo_figura} agregada en: {posicion}")
 
+#Funcion para el escalamiento
 def detectar_cara_figura(x, y):
     """Detectar qué cara de la figura se está seleccionando para escalado"""
     if app.tipo_seleccion != 'figura' or app.objeto_seleccionado is None:
@@ -1396,6 +1405,7 @@ def escalar_objeto(cara, delta):
         elif cara == 'z+' or cara == 'z-':
             figura['escala'][2] *= factor
 
+#Funcion para mostrar las pantallas
 def mostrar_coordenadas():
     if app.objeto_seleccionado is not None:
         glMatrixMode(GL_PROJECTION)
@@ -1581,7 +1591,8 @@ def aplicar_textura_objeto():
             glDeleteTextures([app.textura_terreno])
         app.textura_terreno=textura_id
         app.textura_path=file_path
-        print("Textura del terreno cambiada")
+        app.textura_habilitada=True
+        print(f"Textura aplicada al terreno: {file_path}")
     
     glutPostRedisplay()
 
