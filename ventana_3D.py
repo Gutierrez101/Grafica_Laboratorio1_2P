@@ -1,32 +1,10 @@
-"""
-EDITOR 3D INTERACTIVO CON OPENGL
-================================
-
-Editor 3D completo que permite crear, manipular y visualizar escenas tridimensionales.
-
-CARACTERÍSTICAS:
-- Creación de objetos: Cubos, esferas, torus, cámaras y luces
-- Transformaciones directas: G(mover), R(rotar), E(escalar)
-- Sistema de texturas y colores personalizables
-- Navegación: Vista libre o cámaras fijas
-- Algoritmos de eliminación de lineas y de superficies ocultas (z-buffer)
-- Interfaz intuitiva con barra de herramientas
-
-CONTROLES BÁSICOS:
-- Clic izquierdo: Colocar objetos / Usar herramientas
-- Clic derecho: Seleccionar objetos
-- G/R/E: Transformar objetos seleccionados
-- Flechas: Navegar o transformar precisamente
-- V: Cambiar vista cámara/libre
-- ESC: Salir
-
-Ideal para prototipado 3D, educación en gráficos y modelado básico.
-"""
+# Ventana de visualización 3D con OpenGL - Versión Mejorada
 from OpenGL.GL import *
 from OpenGL.GLU import *
 from OpenGL.GLUT import *
 from OpenGL.GLUT import GLUT_BITMAP_9_BY_15
 from OpenGL.GLUT import GLUT_KEY_UP, GLUT_KEY_DOWN, GLUT_KEY_LEFT, GLUT_KEY_RIGHT
+from juego import dibujar_escena_juego
 
 import sys
 import math
@@ -34,10 +12,12 @@ import numpy as np
 from PIL import Image  # Para manejo de texturas
 import tkinter as tk
 from tkinter import colorchooser, filedialog
+import random
 
 # Estados de la aplicación
 class AppState:
     def __init__(self):
+        self.modo_juego = False
 
         self.back_face_culling = True  # Eliminación de caras traseras
         self.z_buffer_activo = True    # Z-buffer para superficies ocultas
@@ -77,14 +57,10 @@ class AppState:
         self.objetos = []
         self.camaras = []
         self.luces = []
-        self.cubos = []
-        self.esferas = []
-        self.torus = []
+        self.figuras = []  # Reemplaza cubos, esferas y torus
         
         # Texturas para objetos
-        self.textura_cubo = None
-        self.textura_esfera = None
-        self.textura_torus = None
+        self.textura_figuras = None
         self.textura_objetos_habilitada = False
         
         # Selección CORREGIDA
@@ -111,6 +87,7 @@ class AppState:
         self.menu_pos = (0, 0)
         self.opciones_menu = []
         self.submenu_textura_visible = False
+        self.submenu_figuras_visible = False  # Nuevo submenú para figuras
 
         # Propiedades temporales
         self.color_luz_temp = [1.0, 1.0, 1.0, 1.0]
@@ -151,13 +128,11 @@ def init():
     glClearColor(0.1, 0.1, 0.1, 1.0)
     glEnable(GL_DEPTH_TEST)
     
-    
     glDepthFunc(GL_LESS)  # Función de comparación Z-buffer
     glEnable(GL_CULL_FACE)  # Habilitar eliminación de caras
     glCullFace(GL_BACK)     # Eliminar caras traseras
     glFrontFace(GL_CCW)     # Orientación antihoraria para caras frontales
     
-    # (resto de tu función init sin cambios)
     glEnable(GL_LIGHTING)
     configurar_luz_global()
     glEnable(GL_COLOR_MATERIAL)
@@ -302,7 +277,7 @@ def dibujar_manipuladores_escalado(pos, escala):
     glPopMatrix()
     glEnable(GL_LIGHTING)
 
-def dibujar_cubo(pos, escala=(1,1,1), rotacion=(0,0,0), color=(0.6, 0.6, 0.6), seleccionado=False):
+def dibujar_carro(pos, escala=(1,1,1), rotacion=(0,0,0), color=(0.8, 0.2, 0.2), seleccionado=False):
     glPushMatrix()
     glTranslatef(*pos)
     glRotatef(rotacion[0], 1, 0, 0)
@@ -312,107 +287,119 @@ def dibujar_cubo(pos, escala=(1,1,1), rotacion=(0,0,0), color=(0.6, 0.6, 0.6), s
     
     if seleccionado:
         glDisable(GL_LIGHTING)
-        glColor3f(1, 0, 0)
+        glColor3f(1, 1, 0)
         glPolygonMode(GL_FRONT_AND_BACK, GL_LINE)
         glLineWidth(4)
-        glutWireCube(1.0)
-        glEnable(GL_LIGHTING)
         
         # Dibujar ejes de transformación
-        glDisable(GL_LIGHTING)
         glLineWidth(2)
         glBegin(GL_LINES)
         glColor3f(1, 0, 0); glVertex3f(0, 0, 0); glVertex3f(1.5, 0, 0)
         glColor3f(0, 1, 0); glVertex3f(0, 0, 0); glVertex3f(0, 1.5, 0)
         glColor3f(0, 0, 1); glVertex3f(0, 0, 0); glVertex3f(0, 0, 1.5)
         glEnd()
-        glEnable(GL_LIGHTING)
-    else:
-        # Aplicar color/textura según configuración
-        if app.textura_cubo and app.textura_objetos_habilitada:
-            glEnable(GL_TEXTURE_2D)
-            glBindTexture(GL_TEXTURE_2D, app.textura_cubo)
-            glColor3f(1, 1, 1)  # Color blanco para textura
-        else:
-            glDisable(GL_TEXTURE_2D)
-            glColor3f(*color)  # Usar color pasado como parámetro
         
-        # Modo de visualización
-        if app.modo_visualizacion == "wireframe":
-            glPolygonMode(GL_FRONT_AND_BACK, GL_LINE)
-            glutWireCube(1.0)
-        elif app.modo_visualizacion == "puntos":
-            glPolygonMode(GL_FRONT_AND_BACK, GL_POINT)
-            glPointSize(3)
-            glutSolidCube(1.0)
-        else:  # modo sólido
-            glPolygonMode(GL_FRONT_AND_BACK, GL_FILL)
-            glutSolidCube(1.0)
+        glEnable(GL_LIGHTING)
+    
+    # Aplicar color/textura según configuración
+    if app.textura_figuras and app.textura_objetos_habilitada:
+        glEnable(GL_TEXTURE_2D)
+        glBindTexture(GL_TEXTURE_2D, app.textura_figuras)
+        glColor3f(1, 1, 1)  # Color blanco para textura
+    else:
+        glDisable(GL_TEXTURE_2D)
+        glColor3f(*color)  # Usar color pasado como parámetro
+    
+   # --- Cuerpo principal del carro ---
+    # Chasis inferior
+    glPushMatrix()
+    glTranslatef(0, 0.3, 0)
+    glScalef(1.8, 0.4, 3.5)
+    glutSolidCube(1.0)
+    glPopMatrix()
+    
+    # Capó delantero
+    glPushMatrix()
+    glTranslatef(0, 0.5, 1.0)
+    glScalef(1.6, 0.3, 1.2)
+    glutSolidCube(1.0)
+    glPopMatrix()
+    
+    # Parte trasera
+    glPushMatrix()
+    glTranslatef(0, 0.5, -1.0)
+    glScalef(1.6, 0.4, 1.2)
+    glutSolidCube(1.0)
+    glPopMatrix()
+    
+    # Techo curvado
+    glPushMatrix()
+    glTranslatef(0, 0.9, 0)
+    glScalef(1.2, 0.3, 2.0)
+    glutSolidCube(1.0)
+    glPopMatrix()
+    
+    # Parabrisas (vidrio)
+    glColor4f(0.3, 0.4, 0.5, 0.5)  # Color azulado transparente
+    glBegin(GL_QUADS)
+    glVertex3f(-0.6, 0.7, 0.5); glVertex3f(0.6, 0.7, 0.5)
+    glVertex3f(0.6, 0.9, 0.2); glVertex3f(-0.6, 0.9, 0.2)
+    glEnd()
+    
+    # Ventanas laterales
+    glBegin(GL_QUADS)
+    glVertex3f(0.6, 0.7, -0.5); glVertex3f(0.6, 0.7, 0.5)
+    glVertex3f(0.6, 0.9, 0.2); glVertex3f(0.6, 0.9, -0.2)
+    glEnd()
+    
+    glBegin(GL_QUADS)
+    glVertex3f(-0.6, 0.7, -0.5); glVertex3f(-0.6, 0.7, 0.5)
+    glVertex3f(-0.6, 0.9, 0.2); glVertex3f(-0.6, 0.9, -0.2)
+    glEnd()
+    
+    # Faros delanteros
+    glColor3f(0.9, 0.9, 0.7)  # Color amarillo claro
+    glPushMatrix()
+    glTranslatef(0.7, 0.5, 1.3)
+    glutSolidSphere(0.15, 16, 16)
+    glPopMatrix()
+    
+    glPushMatrix()
+    glTranslatef(-0.7, 0.5, 1.3)
+    glutSolidSphere(0.15, 16, 16)
+    glPopMatrix()
+    
+    # Luces traseras
+    glColor3f(0.8, 0.1, 0.1)  # Rojo
+    glPushMatrix()
+    glTranslatef(0.5, 0.5, -1.5)
+    glutSolidSphere(0.15, 16, 16)
+    glPopMatrix()
+    
+    glPushMatrix()
+    glTranslatef(-0.5, 0.5, -1.5)
+    glutSolidSphere(0.15, 16, 16)
+    glPopMatrix()
+    
+    # Ruedas (mejoradas)
+    glColor3f(0.1, 0.1, 0.1)  # Negro
+    for x in [-0.8, 0.8]:
+        for z in [-1.2, 1.2]:
+            glPushMatrix()
+            glTranslatef(x, 0.1, z)
+            glutSolidTorus(0.1, 0.25, 16, 16)  # Neumático
+            glColor3f(0.5, 0.5, 0.5)  # Gris para la llanta
+            glutSolidTorus(0.05, 0.15, 16, 16)
+            glPopMatrix()
     
     glDisable(GL_TEXTURE_2D)
-    glPolygonMode(GL_FRONT_AND_BACK, GL_FILL)
     glPopMatrix()
     
     # Dibujar manipuladores de escalado si está seleccionado y en modo escalado
-    if seleccionado and app.escalando and app.tipo_seleccion == 'cubo':
+    if seleccionado and app.escalando and app.tipo_seleccion == 'figura':
         dibujar_manipuladores_escalado(pos, escala)
 
-def dibujar_esfera(pos, escala=(1,1,1), rotacion=(0,0,0), color=(0.6, 0.2, 0.2), seleccionada=False):
-    glPushMatrix()
-    glTranslatef(*pos)
-    glRotatef(rotacion[0], 1, 0, 0)
-    glRotatef(rotacion[1], 0, 1, 0)
-    glRotatef(rotacion[2], 0, 0, 1)
-    glScalef(*escala)
-    
-    if seleccionada:
-        glDisable(GL_LIGHTING)
-        glColor3f(1, 0, 0)
-        glPolygonMode(GL_FRONT_AND_BACK, GL_LINE)
-        glLineWidth(4)
-        glutWireSphere(0.5, 20, 20)
-        glEnable(GL_LIGHTING)
-        
-        # Dibujar ejes de transformación
-        glDisable(GL_LIGHTING)
-        glLineWidth(2)
-        glBegin(GL_LINES)
-        glColor3f(1, 0, 0); glVertex3f(0, 0, 0); glVertex3f(1.5, 0, 0)
-        glColor3f(0, 1, 0); glVertex3f(0, 0, 0); glVertex3f(0, 1.5, 0)
-        glColor3f(0, 0, 1); glVertex3f(0, 0, 0); glVertex3f(0, 0, 1.5)
-        glEnd()
-        glEnable(GL_LIGHTING)
-    else:
-        if app.textura_esfera and app.textura_objetos_habilitada:
-            glEnable(GL_TEXTURE_2D)
-            glBindTexture(GL_TEXTURE_2D, app.textura_esfera)
-            glColor3f(1, 1, 1)
-        else:
-            glDisable(GL_TEXTURE_2D)
-            glColor3f(*color)
-        
-        # Modo de visualización
-        if app.modo_visualizacion == "wireframe":
-            glPolygonMode(GL_FRONT_AND_BACK, GL_LINE)
-            glutWireSphere(0.5, 20, 20)
-        elif app.modo_visualizacion == "puntos":
-            glPolygonMode(GL_FRONT_AND_BACK, GL_POINT)
-            glPointSize(3)
-            glutSolidSphere(0.5, 20, 20)
-        else:  # modo sólido
-            if app.textura_esfera and app.textura_objetos_habilitada:
-                quad = gluNewQuadric()
-                gluQuadricTexture(quad, GL_TRUE)
-                gluSphere(quad, 0.5, 20, 20)
-                gluDeleteQuadric(quad)
-            else:
-                glutSolidSphere(0.5, 20, 20)
-    
-    glDisable(GL_TEXTURE_2D)
-    glPolygonMode(GL_FRONT_AND_BACK, GL_FILL)
-    glPopMatrix()
-
-def dibujar_torus(pos, escala=(1,1,1), rotacion=(0,0,0), color=(0.2, 0.6, 0.2), seleccionado=False):
+def dibujar_arbol(pos, escala=(1,1,1), rotacion=(0,0,0), color=(0.4, 0.2, 0.1), seleccionado=False):
     glPushMatrix()
     glTranslatef(*pos)
     glRotatef(rotacion[0], 1, 0, 0)
@@ -425,41 +412,326 @@ def dibujar_torus(pos, escala=(1,1,1), rotacion=(0,0,0), color=(0.2, 0.6, 0.2), 
         glColor3f(1, 0, 0)
         glPolygonMode(GL_FRONT_AND_BACK, GL_LINE)
         glLineWidth(4)
-        glutWireTorus(0.2, 0.5, 20, 20)
-        glEnable(GL_LIGHTING)
         
         # Dibujar ejes de transformación
-        glDisable(GL_LIGHTING)
         glLineWidth(2)
         glBegin(GL_LINES)
         glColor3f(1, 0, 0); glVertex3f(0, 0, 0); glVertex3f(1.5, 0, 0)
         glColor3f(0, 1, 0); glVertex3f(0, 0, 0); glVertex3f(0, 1.5, 0)
         glColor3f(0, 0, 1); glVertex3f(0, 0, 0); glVertex3f(0, 0, 1.5)
         glEnd()
-        glEnable(GL_LIGHTING)
-    else:
-        if app.textura_torus and app.textura_objetos_habilitada:
-            glEnable(GL_TEXTURE_2D)
-            glBindTexture(GL_TEXTURE_2D, app.textura_torus)
-            glColor3f(1, 1, 1)
-        else:
-            glDisable(GL_TEXTURE_2D)
-            glColor3f(*color)
         
-        # Modo de visualización
-        if app.modo_visualizacion == "wireframe":
-            glPolygonMode(GL_FRONT_AND_BACK, GL_LINE)
-            glutWireTorus(0.2, 0.5, 20, 20)
-        elif app.modo_visualizacion == "puntos":
-            glPolygonMode(GL_FRONT_AND_BACK, GL_POINT)
-            glPointSize(3)
-            glutSolidTorus(0.2, 0.5, 20, 20)
-        else:  # modo sólido
-            glutSolidTorus(0.2, 0.5, 20, 20)
+        glEnable(GL_LIGHTING)
+    
+    # Aplicar color/textura según configuración
+    if app.textura_figuras and app.textura_objetos_habilitada:
+        glEnable(GL_TEXTURE_2D)
+        glBindTexture(GL_TEXTURE_2D, app.textura_figuras)
+        glColor3f(1, 1, 1)  # Color blanco para textura
+    else:
+        glDisable(GL_TEXTURE_2D)
+        glColor3f(*color)  # Usar color pasado como parámetro
+    
+    # Tronco del árbol
+    glColor3f(0.4, 0.2, 0.1)  # Marrón para el tronco
+    glPushMatrix()
+    glTranslatef(0, 1.0, 0)
+    glScalef(0.3, 2.0, 0.3)
+    glutSolidCube(1.0)
+    glPopMatrix()
+    
+    # Copa del árbol (usando fractales simples)
+    glColor3f(0.1, 0.5, 0.1)  # Verde para las hojas
+    for i in range(3):  # 3 niveles de ramas
+        y_pos = 2.0 + i * 0.7
+        size = 1.2 - i * 0.3
+        glPushMatrix()
+        glTranslatef(0, y_pos, 0)
+        glutSolidSphere(size, 10, 10)
+        glPopMatrix()
     
     glDisable(GL_TEXTURE_2D)
     glPolygonMode(GL_FRONT_AND_BACK, GL_FILL)
     glPopMatrix()
+    
+    if seleccionado and app.escalando and app.tipo_seleccion == 'figura':
+        dibujar_manipuladores_escalado(pos, escala)
+
+def dibujar_arbusto(pos, escala=(1,1,1), rotacion=(0,0,0), color=(0.1, 0.5, 0.1), seleccionado=False):
+    glPushMatrix()
+    glTranslatef(*pos)
+    glRotatef(rotacion[0], 1, 0, 0)
+    glRotatef(rotacion[1], 0, 1, 0)
+    glRotatef(rotacion[2], 0, 0, 1)
+    glScalef(*escala)
+    
+    if seleccionado:
+        glDisable(GL_LIGHTING)
+        glColor3f(1, 0, 0)
+        glPolygonMode(GL_FRONT_AND_BACK, GL_LINE)
+        glLineWidth(4)
+        
+        # Dibujar ejes de transformación
+        glLineWidth(2)
+        glBegin(GL_LINES)
+        glColor3f(1, 0, 0); glVertex3f(0, 0, 0); glVertex3f(1.5, 0, 0)
+        glColor3f(0, 1, 0); glVertex3f(0, 0, 0); glVertex3f(0, 1.5, 0)
+        glColor3f(0, 0, 1); glVertex3f(0, 0, 0); glVertex3f(0, 0, 1.5)
+        glEnd()
+        
+        glEnable(GL_LIGHTING)
+    
+    # Aplicar color/textura según configuración
+    if app.textura_figuras and app.textura_objetos_habilitada:
+        glEnable(GL_TEXTURE_2D)
+        glBindTexture(GL_TEXTURE_2D, app.textura_figuras)
+        glColor3f(1, 1, 1)  # Color blanco para textura
+    else:
+        glDisable(GL_TEXTURE_2D)
+        glColor3f(*color)  # Usar color pasado como parámetro
+    
+    # Base del arbusto
+    glPushMatrix()
+    glutSolidSphere(0.5, 10, 10)
+    glPopMatrix()
+    
+    # Fractal simple para helecho
+    def dibujar_helecho(x, y, z, size, angle, depth):
+        if depth <= 0:
+            return
+            
+        glPushMatrix()
+        glTranslatef(x, y, z)
+        glRotatef(angle, 0, 0, 1)
+        
+        # Tallo
+        glBegin(GL_LINES)
+        glVertex3f(0, 0, 0)
+        glVertex3f(0, size, 0)
+        glEnd()
+        
+        # Hojas
+        glBegin(GL_TRIANGLES)
+        glVertex3f(0, size*0.3, 0)
+        glVertex3f(-size*0.2, size*0.5, 0)
+        glVertex3f(size*0.2, size*0.5, 0)
+        glEnd()
+        
+        # Ramas recursivas
+        dibujar_helecho(0, size*0.7, 0, size*0.7, angle+20, depth-1)
+        dibujar_helecho(0, size*0.7, 0, size*0.7, angle-20, depth-1)
+        
+        glPopMatrix()
+    
+    glDisable(GL_LIGHTING)
+    glColor3f(0.1, 0.5, 0.1)
+    dibujar_helecho(0, 0.5, 0, 0.5, 0, 3)
+    glEnable(GL_LIGHTING)
+    
+    glDisable(GL_TEXTURE_2D)
+    glPolygonMode(GL_FRONT_AND_BACK, GL_FILL)
+    glPopMatrix()
+    
+    if seleccionado and app.escalando and app.tipo_seleccion == 'figura':
+        dibujar_manipuladores_escalado(pos, escala)
+
+def dibujar_casa(pos, escala=(1,1,1), rotacion=(0,0,0), color=(0.8, 0.6, 0.4), seleccionado=False):
+    glPushMatrix()
+    glTranslatef(*pos)
+    glRotatef(rotacion[0], 1, 0, 0)
+    glRotatef(rotacion[1], 0, 1, 0)
+    glRotatef(rotacion[2], 0, 0, 1)
+    glScalef(*escala)
+    
+    if seleccionado:
+        glDisable(GL_LIGHTING)
+        glColor3f(1, 0, 0)
+        glPolygonMode(GL_FRONT_AND_BACK, GL_LINE)
+        glLineWidth(4)
+        
+        # Dibujar ejes de transformación
+        glLineWidth(2)
+        glBegin(GL_LINES)
+        glColor3f(1, 0, 0); glVertex3f(0, 0, 0); glVertex3f(1.5, 0, 0)
+        glColor3f(0, 1, 0); glVertex3f(0, 0, 0); glVertex3f(0, 1.5, 0)
+        glColor3f(0, 0, 1); glVertex3f(0, 0, 0); glVertex3f(0, 0, 1.5)
+        glEnd()
+        
+        glEnable(GL_LIGHTING)
+    
+    # Aplicar color/textura según configuración
+    if app.textura_figuras and app.textura_objetos_habilitada:
+        glEnable(GL_TEXTURE_2D)
+        glBindTexture(GL_TEXTURE_2D, app.textura_figuras)
+        glColor3f(1, 1, 1)  # Color blanco para textura
+    else:
+        glDisable(GL_TEXTURE_2D)
+        glColor3f(*color)  # Usar color pasado como parámetro
+    
+    # --- Estructura principal ---
+    # Base de la casa (paredes)
+    glPushMatrix()
+    glScalef(1.8, 1.0, 1.8)
+    glutSolidCube(1.0)
+    glPopMatrix()
+    
+    # Techo a dos aguas (más detallado)
+    glColor3f(0.5, 0.2, 0.1)  # Color rojizo para tejas
+    glBegin(GL_TRIANGLES)
+    # Cara frontal
+    glVertex3f(-0.9, 1.0, 0.9)
+    glVertex3f(0.9, 1.0, 0.9)
+    glVertex3f(0.0, 2.0, 0.0)
+    # Cara derecha
+    glVertex3f(0.9, 1.0, 0.9)
+    glVertex3f(0.9, 1.0, -0.9)
+    glVertex3f(0.0, 2.0, 0.0)
+    # Cara trasera
+    glVertex3f(0.9, 1.0, -0.9)
+    glVertex3f(-0.9, 1.0, -0.9)
+    glVertex3f(0.0, 2.0, 0.0)
+    # Cara izquierda
+    glVertex3f(-0.9, 1.0, -0.9)
+    glVertex3f(-0.9, 1.0, 0.9)
+    glVertex3f(0.0, 2.0, 0.0)
+    glEnd()
+    
+    # Chimenea
+    glColor3f(0.6, 0.6, 0.6)
+    glPushMatrix()
+    glTranslatef(0.5, 1.5, -0.5)
+    glScalef(0.2, 0.8, 0.2)
+    glutSolidCube(1.0)
+    glPopMatrix()
+    
+    # --- Detalles de la casa ---
+    # Puerta principal
+    glColor3f(0.4, 0.3, 0.2)
+    glPushMatrix()
+    glTranslatef(0.0, -0.5, 0.9)
+    glScalef(0.4, 0.8, 0.1)
+    glutSolidCube(1.0)
+    glPopMatrix()
+    
+    # Ventanas
+    glColor4f(0.3, 0.5, 0.8, 0.7)  # Color de vidrio
+    for x in [-0.6, 0.6]:
+        for z in [-0.5, 0.5]:
+            glPushMatrix()
+            glTranslatef(x, 0.3, z)
+            glScalef(0.3, 0.4, 0.1)
+            glutSolidCube(1.0)
+            glPopMatrix()
+    
+    # Marco de ventanas
+    glColor3f(0.3, 0.2, 0.1)
+    for x in [-0.6, 0.6]:
+        for z in [-0.5, 0.5]:
+            glPushMatrix()
+            glTranslatef(x, 0.3, z)
+            glScalef(0.35, 0.45, 0.11)
+            glutWireCube(1.0)
+            glPopMatrix()
+    
+    # Escalones
+    glColor3f(0.5, 0.4, 0.3)
+    for i in range(3):
+        glPushMatrix()
+        glTranslatef(0, -0.6 - i*0.1, 0.9 + i*0.1)
+        glScalef(0.5 - i*0.1, 0.1, 0.3 - i*0.1)
+        glutSolidCube(1.0)
+        glPopMatrix()
+    
+    glDisable(GL_TEXTURE_2D)
+    glPolygonMode(GL_FRONT_AND_BACK, GL_FILL)
+    glPopMatrix()
+    
+    if seleccionado and app.escalando and app.tipo_seleccion == 'figura':
+        dibujar_manipuladores_escalado(pos, escala)
+
+def dibujar_montana(pos, escala=(1,1,1), rotacion=(0,0,0), color=(0.5, 0.4, 0.3), seleccionado=False):
+    glPushMatrix()
+    glTranslatef(*pos)
+    glRotatef(rotacion[0], 1, 0, 0)
+    glRotatef(rotacion[1], 0, 1, 0)
+    glRotatef(rotacion[2], 0, 0, 1)
+    glScalef(*escala)
+    
+    if seleccionado:
+        glDisable(GL_LIGHTING)
+        glColor3f(1, 0, 0)
+        glPolygonMode(GL_FRONT_AND_BACK, GL_LINE)
+        glLineWidth(4)
+        
+        # Dibujar ejes de transformación
+        glLineWidth(2)
+        glBegin(GL_LINES)
+        glColor3f(1, 0, 0); glVertex3f(0, 0, 0); glVertex3f(1.5, 0, 0)
+        glColor3f(0, 1, 0); glVertex3f(0, 0, 0); glVertex3f(0, 1.5, 0)
+        glColor3f(0, 0, 1); glVertex3f(0, 0, 0); glVertex3f(0, 0, 1.5)
+        glEnd()
+        
+        glEnable(GL_LIGHTING)
+    
+    # Aplicar color/textura según configuración
+    if app.textura_figuras and app.textura_objetos_habilitada:
+        glEnable(GL_TEXTURE_2D)
+        glBindTexture(GL_TEXTURE_2D, app.textura_figuras)
+        glColor3f(1, 1, 1)  # Color blanco para textura
+    else:
+        glDisable(GL_TEXTURE_2D)
+        glColor3f(*color)  # Usar color pasado como parámetro
+    
+   # Base de la montaña (más detallada)
+    glPushMatrix()
+    glScalef(1.5, 1.5, 1.5)  # Más ancha
+    
+    # Usar una pirámide con lados escalonados para más realismo
+    glBegin(GL_TRIANGLE_FAN)
+    glVertex3f(0, 2, 0)  # Pico
+    for i in range(13):  # 12 lados + 1 para cerrar
+        ang = i * 2 * math.pi / 12
+        x = math.cos(ang)
+        z = math.sin(ang)
+        
+        # Crear escalones en la montaña
+        if i % 3 == 0:
+            glVertex3f(x, 0.5, z)
+            glVertex3f(x*0.8, 0.8, z*0.8)
+        elif i % 3 == 1:
+            glVertex3f(x*0.8, 0.8, z*0.8)
+            glVertex3f(x*0.5, 1.2, z*0.5)
+        else:
+            glVertex3f(x*0.5, 1.2, z*0.5)
+            glVertex3f(x*0.2, 1.7, z*0.2)
+    glEnd()
+    
+    # Detalles de rocas en la base
+    glColor3f(0.4, 0.35, 0.3)  # Color más oscuro para rocas
+    for i in range(8):
+        ang = i * 2 * math.pi / 8
+        x = math.cos(ang) * 1.2
+        z = math.sin(ang) * 1.2
+        glPushMatrix()
+        glTranslatef(x, 0.1, z)
+        glutSolidSphere(0.2 + random.random()*0.1, 8, 8)
+        glPopMatrix()
+    
+    # Nieve en la cima
+    glColor3f(0.9, 0.9, 0.95)
+    glPushMatrix()
+    glTranslatef(0, 1.5, 0)
+    glutSolidSphere(0.5, 8, 8)
+    glPopMatrix()
+    
+    glPopMatrix()
+    
+    glDisable(GL_TEXTURE_2D)
+    glPolygonMode(GL_FRONT_AND_BACK, GL_FILL)
+    glPopMatrix()
+    
+    if seleccionado and app.escalando and app.tipo_seleccion == 'figura':
+        dibujar_manipuladores_escalado(pos, escala)
 
 def dibujar_camara(pos, look_at, up, escala=(1,1,1), rotacion=(0,0,0), seleccionada=False):
     glPushMatrix()
@@ -649,14 +921,13 @@ def dibujar_barra_herramientas():
         ("Seleccionar", 10, app.selection_mode),
         ("Camara", 120, app.modo_edicion == 'colocar_camara'),
         ("Luz", 230, app.modo_edicion == 'colocar_luz'),
-        ("Cubo", 340, app.modo_edicion == 'colocar_cubo'),
-        ("Esfera", 450, app.modo_edicion == 'colocar_esfera'),
-        ("Torus", 560, app.modo_edicion == 'colocar_torus'),
-        ("Textura", 670, False),
-        ("Eliminar", 780, False),
-        ("Vista Cam", 890, app.camara_actual is not None),
-        ("Vista Libre", 1000, app.camara_actual is None),
-        ("Ocultas", 1110, False),
+        ("Figuras", 340, app.modo_edicion == 'colocar_figura'),  # Botón único para figuras
+        ("Textura", 450, False),
+        ("Eliminar", 560, False),
+        ("Vista Cam", 670, app.camara_actual is not None),
+        ("Vista Libre", 780, app.camara_actual is None),
+        ("Ocultas", 890, False),
+        ("Juego", 1000, app.modo_juego)
     ]
     
     for nombre, x, activo in botones:
@@ -681,19 +952,19 @@ def dibujar_barra_herramientas():
     if app.submenu_ocultas_visible:
         glColor3f(0.2, 0.3, 0.4)
         glBegin(GL_QUADS)
-        glVertex2f(1110, 40)
-        glVertex2f(1110+180, 40)
-        glVertex2f(1110+180, 160)
-        glVertex2f(1110, 160)
+        glVertex2f(890, 40)
+        glVertex2f(890+180, 40)
+        glVertex2f(890+180, 160)
+        glVertex2f(890, 160)
         glEnd()
         
         opciones_ocultas = [
-            (f"Z-Buffer: {'ON' if app.z_buffer_activo else 'OFF'}", 1120, 55),
-            (f"Back-Face: {'ON' if app.back_face_culling else 'OFF'}", 1120, 75),
-            (f"Normales: {'ON' if app.mostrar_normales else 'OFF'}", 1120, 95),
-            ("Wireframe", 1120, 115),
-            ("Solido", 1120, 135),
-            ("Puntos", 1120, 155)
+            (f"Z-Buffer: {'ON' if app.z_buffer_activo else 'OFF'}", 900, 55),
+            (f"Back-Face: {'ON' if app.back_face_culling else 'OFF'}", 900, 75),
+            (f"Normales: {'ON' if app.mostrar_normales else 'OFF'}", 900, 95),
+            ("Wireframe", 900, 115),
+            ("Solido", 900, 135),
+            ("Puntos", 900, 155)
         ]
         
         for texto, x, y in opciones_ocultas:
@@ -704,46 +975,65 @@ def dibujar_barra_herramientas():
 
     # Submenú de textura
     if app.submenu_textura_visible:
-        # Fondo del submenú
         glColor3f(0.25, 0.25, 0.35)
         glBegin(GL_QUADS)
-        glVertex2f(670, 40)
-        glVertex2f(870, 40)
-        glVertex2f(870, 100)
-        glVertex2f(670, 100)
+        glVertex2f(450, 40)
+        glVertex2f(650, 40)
+        glVertex2f(650, 100)
+        glVertex2f(450, 100)
         glEnd()
         
-        # Separador entre opciones
         glColor3f(0.4, 0.4, 0.5)
         glBegin(GL_LINES)
-        glVertex2f(675, 70)
-        glVertex2f(865, 70)
+        glVertex2f(455, 70)
+        glVertex2f(645, 70)
         glEnd()
         
-        # Resaltar área de "Aplicar Color"
         glColor3f(0.35, 0.35, 0.45)
         glBegin(GL_QUADS)
-        glVertex2f(675, 45)
-        glVertex2f(865, 45)
-        glVertex2f(865, 65)
-        glVertex2f(675, 65)
+        glVertex2f(455, 45)
+        glVertex2f(645, 45)
+        glVertex2f(645, 65)
+        glVertex2f(455, 65)
         glEnd()
         
-        # Resaltar área de "Aplicar Textura"
         glBegin(GL_QUADS)
-        glVertex2f(675, 75)
-        glVertex2f(865, 75)
-        glVertex2f(865, 95)
-        glVertex2f(675, 95)
+        glVertex2f(455, 75)
+        glVertex2f(645, 75)
+        glVertex2f(645, 95)
+        glVertex2f(455, 95)
         glEnd()
         
-        # Texto de las opciones
         opciones = [
-            ("Aplicar Color", 680, 58),
-            ("Aplicar Textura", 680, 88)
+            ("Aplicar Color", 460, 58),
+            ("Aplicar Textura", 460, 88)
         ]
         
         for texto, x, y in opciones:
+            glColor3f(1, 1, 1)
+            glRasterPos2f(x, y)
+            for c in texto:
+                glutBitmapCharacter(GLUT_BITMAP_9_BY_15, ord(c))
+
+    # Submenú de figuras
+    if app.submenu_figuras_visible:
+        glColor3f(0.25, 0.35, 0.45)
+        glBegin(GL_QUADS)
+        glVertex2f(340, 40)
+        glVertex2f(540, 40)
+        glVertex2f(540, 200)
+        glVertex2f(340, 200)
+        glEnd()
+        
+        opciones_figuras = [
+            ("Carro", 350, 60),
+            ("Arbol", 350, 90),
+            ("Arbusto", 350, 120),
+            ("Casa", 350, 150),
+            ("Montaña", 350, 180)
+        ]
+        
+        for texto, x, y in opciones_figuras:
             glColor3f(1, 1, 1)
             glRasterPos2f(x, y)
             for c in texto:
@@ -848,27 +1138,20 @@ def seleccionar_objeto(x, y):
         glPopName()
         glPopName()
     
-    # CUBOS - tipo 3
-    for i, cubo in enumerate(app.cubos):
+    # FIGURAS - tipo 3
+    for i, figura in enumerate(app.figuras):
         glPushName(3)
         glPushName(i)
-        dibujar_cubo(cubo['pos'], cubo['escala'], cubo['rotacion'], cubo['color'], False)
-        glPopName()
-        glPopName()
-    
-    # ESFERAS - tipo 4 (CORREGIDO)
-    for i, esfera in enumerate(app.esferas):
-        glPushName(4)
-        glPushName(i)
-        dibujar_esfera(esfera['pos'], esfera['escala'], esfera['rotacion'], esfera['color'], False)
-        glPopName()
-        glPopName()
-    
-    # TORUS - tipo 5 (CORREGIDO)
-    for i, torus in enumerate(app.torus):
-        glPushName(5)
-        glPushName(i)
-        dibujar_torus(torus['pos'], torus['escala'], torus['rotacion'], torus['color'], False)
+        if figura['tipo'] == 'carro':
+            dibujar_carro(figura['pos'], figura['escala'], figura['rotacion'], figura['color'], False)
+        elif figura['tipo'] == 'arbol':
+            dibujar_arbol(figura['pos'], figura['escala'], figura['rotacion'], figura['color'], False)
+        elif figura['tipo'] == 'arbusto':
+            dibujar_arbusto(figura['pos'], figura['escala'], figura['rotacion'], figura['color'], False)
+        elif figura['tipo'] == 'casa':
+            dibujar_casa(figura['pos'], figura['escala'], figura['rotacion'], figura['color'], False)
+        elif figura['tipo'] == 'montana':
+            dibujar_montana(figura['pos'], figura['escala'], figura['rotacion'], figura['color'], False)
         glPopName()
         glPopName()
         
@@ -887,9 +1170,7 @@ def seleccionar_objeto(x, y):
             
             if tipo == 1: return 'camara', idx
             elif tipo == 2: return 'luz', idx
-            elif tipo == 3: return 'cubo', idx
-            elif tipo == 4: return 'esfera', idx
-            elif tipo == 5: return 'torus', idx
+            elif tipo == 3: return 'figura', idx
     
     return None, None
 
@@ -908,17 +1189,9 @@ def eliminar_objeto_seleccionado():
             glDisable(luz_id)
             app.luces.pop(app.objeto_seleccionado)
     
-    elif app.tipo_seleccion == 'cubo' and app.objeto_seleccionado is not None:
-        if 0 <= app.objeto_seleccionado < len(app.cubos):
-            app.cubos.pop(app.objeto_seleccionado)
-    
-    elif app.tipo_seleccion == 'esfera' and app.objeto_seleccionado is not None:
-        if 0 <= app.objeto_seleccionado < len(app.esferas):
-            app.esferas.pop(app.objeto_seleccionado)
-    
-    elif app.tipo_seleccion == 'torus' and app.objeto_seleccionado is not None:
-        if 0 <= app.objeto_seleccionado < len(app.torus):
-            app.torus.pop(app.objeto_seleccionado)
+    elif app.tipo_seleccion == 'figura' and app.objeto_seleccionado is not None:
+        if 0 <= app.objeto_seleccionado < len(app.figuras):
+            app.figuras.pop(app.objeto_seleccionado)
     
     app.objeto_seleccionado = None
     app.tipo_seleccion = None
@@ -954,106 +1227,33 @@ def agregar_luz(posicion):
     configurar_luz(app.objeto_seleccionado)
     print(f"Luz agregada en: {posicion}")
 
-def agregar_cubo(posicion):
-    nuevo_cubo = {
+def agregar_figura(posicion, tipo_figura):
+    nueva_figura = {
         'pos': [posicion[0], 0.5, posicion[2]],
         'escala': [1.0, 1.0, 1.0],
         'rotacion': [0.0, 0.0, 0.0],
-        'color': [0.8, 0.2, 0.2]  # Rojo oscuro
+        'color': [0.8, 0.2, 0.2],  # Color inicial
+        'tipo': tipo_figura
     }
-    app.cubos.append(nuevo_cubo)
-    app.objeto_seleccionado = len(app.cubos) - 1
-    app.tipo_seleccion = 'cubo'
-    print(f"Cubo agregado en: {posicion}")
+    app.figuras.append(nueva_figura)
+    app.objeto_seleccionado = len(app.figuras) - 1
+    app.tipo_seleccion = 'figura'
+    print(f"Figura {tipo_figura} agregada en: {posicion}")
 
-def agregar_esfera(posicion):
-    nueva_esfera = {
-        'pos': [posicion[0], 0.5, posicion[2]],
-        'escala': [1.0, 1.0, 1.0],
-        'rotacion': [0.0, 0.0, 0.0],
-        'color': [0.6, 0.2, 0.2]  # Color inicial
-    }
-    app.esferas.append(nueva_esfera)
-    app.objeto_seleccionado = len(app.esferas) - 1
-    app.tipo_seleccion = 'esfera'
-    print(f"Esfera agregada en: {posicion}")
-
-def agregar_torus(posicion):
-    nuevo_torus = {
-        'pos': [posicion[0], 0.5, posicion[2]],
-        'escala': [1.0, 1.0, 1.0],
-        'rotacion': [0.0, 0.0, 0.0],
-        'color': [0.2, 0.6, 0.2]  # Color inicial
-    }
-    app.torus.append(nuevo_torus)
-    app.objeto_seleccionado = len(app.torus) - 1
-    app.tipo_seleccion = 'torus'
-    print(f"Torus agregado en: {posicion}")
-
-def detectar_cara_cubo(x, y):
-    """Detectar qué cara del cubo se está seleccionando para escalado"""
-    if app.tipo_seleccion != 'cubo' or app.objeto_seleccionado is None:
+def detectar_cara_figura(x, y):
+    """Detectar qué cara de la figura se está seleccionando para escalado"""
+    if app.tipo_seleccion != 'figura' or app.objeto_seleccionado is None:
         return None
     
-    cubo = app.cubos[app.objeto_seleccionado]
+    figura = app.figuras[app.objeto_seleccionado]
     pos_3d = obtener_posicion_3d(x, y)
     if pos_3d is None:
         return None
     
     # Determinar cara más cercana basada en la posición
-    centro = cubo['pos']
+    centro = figura['pos']
     dx = pos_3d[0] - centro[0]
     dy = pos_3d[1] - centro[1] 
-    dz = pos_3d[2] - centro[2]
-    
-    # Encontrar el eje con mayor diferencia
-    abs_dx, abs_dy, abs_dz = abs(dx), abs(dy), abs(dz)
-    
-    if abs_dx > abs_dy and abs_dx > abs_dz:
-        return 'x+' if dx > 0 else 'x-'
-    elif abs_dy > abs_dx and abs_dy > abs_dz:
-        return 'y+' if dy > 0 else 'y-'
-    else:
-        return 'z+' if dz > 0 else 'z-'
-
-def detectar_cara_esfera(x, y):
-    """Detectar dirección de escalado para esfera"""
-    if app.tipo_seleccion != 'esfera' or app.objeto_seleccionado is None:
-        return None
-    
-    esfera = app.esferas[app.objeto_seleccionado]
-    pos_3d = obtener_posicion_3d(x, y)
-    if pos_3d is None:
-        return None
-    
-    centro = esfera['pos']
-    dx = pos_3d[0] - centro[0]
-    dy = pos_3d[1] - centro[1]
-    dz = pos_3d[2] - centro[2]
-    
-    # Encontrar el eje con mayor diferencia
-    abs_dx, abs_dy, abs_dz = abs(dx), abs(dy), abs(dz)
-    
-    if abs_dx > abs_dy and abs_dx > abs_dz:
-        return 'x+' if dx > 0 else 'x-'
-    elif abs_dy > abs_dx and abs_dy > abs_dz:
-        return 'y+' if dy > 0 else 'y-'
-    else:
-        return 'z+' if dz > 0 else 'z-'
-
-def detectar_cara_torus(x, y):
-    """Detectar dirección de escalado para torus"""
-    if app.tipo_seleccion != 'torus' or app.objeto_seleccionado is None:
-        return None
-    
-    torus = app.torus[app.objeto_seleccionado]
-    pos_3d = obtener_posicion_3d(x, y)
-    if pos_3d is None:
-        return None
-    
-    centro = torus['pos']
-    dx = pos_3d[0] - centro[0]
-    dy = pos_3d[1] - centro[1]
     dz = pos_3d[2] - centro[2]
     
     # Encontrar el eje con mayor diferencia
@@ -1073,44 +1273,14 @@ def escalar_objeto(cara, delta):
     
     factor = 1 + delta * 0.01  # Factor de escalado basado en delta del mouse
     
-    if app.tipo_seleccion == 'cubo':
-        cubo = app.cubos[app.objeto_seleccionado]
+    if app.tipo_seleccion == 'figura':
+        figura = app.figuras[app.objeto_seleccionado]
         if cara == 'x+' or cara == 'x-':
-            cubo['escala'][0] *= factor
-            if cara == 'x+':
-                cubo['pos'][0] += (factor - 1) * cubo['escala'][0] * 0.5
-            else:
-                cubo['pos'][0] -= (factor - 1) * cubo['escala'][0] * 0.5
+            figura['escala'][0] *= factor
         elif cara == 'y+' or cara == 'y-':
-            cubo['escala'][1] *= factor
-            if cara == 'y+':
-                cubo['pos'][1] += (factor - 1) * cubo['escala'][1] * 0.5
-            else:
-                cubo['pos'][1] -= (factor - 1) * cubo['escala'][1] * 0.5
+            figura['escala'][1] *= factor
         elif cara == 'z+' or cara == 'z-':
-            cubo['escala'][2] *= factor
-            if cara == 'z+':
-                cubo['pos'][2] += (factor - 1) * cubo['escala'][2] * 0.5
-            else:
-                cubo['pos'][2] -= (factor - 1) * cubo['escala'][2] * 0.5
-    
-    elif app.tipo_seleccion == 'esfera':
-        esfera = app.esferas[app.objeto_seleccionado]
-        if cara == 'x+' or cara == 'x-':
-            esfera['escala'][0] *= factor
-        elif cara == 'y+' or cara == 'y-':
-            esfera['escala'][1] *= factor
-        elif cara == 'z+' or cara == 'z-':
-            esfera['escala'][2] *= factor
-    
-    elif app.tipo_seleccion == 'torus':
-        torus = app.torus[app.objeto_seleccionado]
-        if cara == 'x+' or cara == 'x-':
-            torus['escala'][0] *= factor
-        elif cara == 'y+' or cara == 'y-':
-            torus['escala'][1] *= factor
-        elif cara == 'z+' or cara == 'z-':
-            torus['escala'][2] *= factor
+            figura['escala'][2] *= factor
 
 def mostrar_coordenadas():
     if app.objeto_seleccionado is not None:
@@ -1133,15 +1303,10 @@ def mostrar_coordenadas():
         elif app.tipo_seleccion == 'luz':
             pos = app.luces[app.objeto_seleccionado]['pos']
             texto = f"Luz seleccionada: X={pos[0]:.2f} Y={pos[1]:.2f} Z={pos[2]:.2f}"
-        elif app.tipo_seleccion == 'cubo':
-            pos = app.cubos[app.objeto_seleccionado]['pos']
-            texto = f"Cubo seleccionado: X={pos[0]:.2f} Y={pos[1]:.2f} Z={pos[2]:.2f}"
-        elif app.tipo_seleccion == 'esfera':
-            pos = app.esferas[app.objeto_seleccionado]['pos']
-            texto = f"Esfera seleccionada: X={pos[0]:.2f} Y={pos[1]:.2f} Z={pos[2]:.2f}"
-        elif app.tipo_seleccion == 'torus':
-            pos = app.torus[app.objeto_seleccionado]['pos']
-            texto = f"Torus seleccionado: X={pos[0]:.2f} Y={pos[1]:.2f} Z={pos[2]:.2f}"
+        elif app.tipo_seleccion == 'figura':
+            pos = app.figuras[app.objeto_seleccionado]['pos']
+            tipo = app.figuras[app.objeto_seleccionado]['tipo']
+            texto = f"Figura seleccionada ({tipo}): X={pos[0]:.2f} Y={pos[1]:.2f} Z={pos[2]:.2f}"
         
         for char in texto:
             glutBitmapCharacter(GLUT_BITMAP_9_BY_15, ord(char))
@@ -1187,23 +1352,11 @@ def mover_objeto_con_teclado(dx, dy, dz):
         luz['pos'][2] += dz
         configurar_luz(app.objeto_seleccionado)
         
-    elif app.tipo_seleccion == 'cubo':
-        cubo = app.cubos[app.objeto_seleccionado]
-        cubo['pos'][0] += dx
-        cubo['pos'][1] += dy
-        cubo['pos'][2] += dz
-    
-    elif app.tipo_seleccion == 'esfera':
-        esfera = app.esferas[app.objeto_seleccionado]
-        esfera['pos'][0] += dx
-        esfera['pos'][1] += dy
-        esfera['pos'][2] += dz
-    
-    elif app.tipo_seleccion == 'torus':
-        torus = app.torus[app.objeto_seleccionado]
-        torus['pos'][0] += dx
-        torus['pos'][1] += dy
-        torus['pos'][2] += dz
+    elif app.tipo_seleccion == 'figura':
+        figura = app.figuras[app.objeto_seleccionado]
+        figura['pos'][0] += dx
+        figura['pos'][1] += dy
+        figura['pos'][2] += dz
 
 def rotar_objeto_con_teclado(rx, ry, rz):
     """Función para rotar objetos con las flechas del teclado"""
@@ -1222,23 +1375,11 @@ def rotar_objeto_con_teclado(rx, ry, rz):
         luz['rotacion'][1] += ry
         luz['rotacion'][2] += rz
         
-    elif app.tipo_seleccion == 'cubo':
-        cubo = app.cubos[app.objeto_seleccionado]
-        cubo['rotacion'][0] += rx
-        cubo['rotacion'][1] += ry
-        cubo['rotacion'][2] += rz
-    
-    elif app.tipo_seleccion == 'esfera':
-        esfera = app.esferas[app.objeto_seleccionado]
-        esfera['rotacion'][0] += rx
-        esfera['rotacion'][1] += ry
-        esfera['rotacion'][2] += rz
-    
-    elif app.tipo_seleccion == 'torus':
-        torus = app.torus[app.objeto_seleccionado]
-        torus['rotacion'][0] += rx
-        torus['rotacion'][1] += ry
-        torus['rotacion'][2] += rz
+    elif app.tipo_seleccion == 'figura':
+        figura = app.figuras[app.objeto_seleccionado]
+        figura['rotacion'][0] += rx
+        figura['rotacion'][1] += ry
+        figura['rotacion'][2] += rz
 
 def escalar_objeto_con_teclado(factor):
     """Función para escalar objetos con las flechas del teclado"""
@@ -1255,20 +1396,10 @@ def escalar_objeto_con_teclado(factor):
         for i in range(3):
             luz['escala'][i] *= factor
             
-    elif app.tipo_seleccion == 'cubo':
-        cubo = app.cubos[app.objeto_seleccionado]
+    elif app.tipo_seleccion == 'figura':
+        figura = app.figuras[app.objeto_seleccionado]
         for i in range(3):
-            cubo['escala'][i] *= factor
-    
-    elif app.tipo_seleccion == 'esfera':
-        esfera = app.esferas[app.objeto_seleccionado]
-        for i in range(3):
-            esfera['escala'][i] *= factor
-    
-    elif app.tipo_seleccion == 'torus':
-        torus = app.torus[app.objeto_seleccionado]
-        for i in range(3):
-            torus['escala'][i] *= factor
+            figura['escala'][i] *= factor
 
 def aplicar_color_objeto():
     """Aplicar un color al objeto seleccionado"""
@@ -1293,25 +1424,19 @@ def aplicar_color_objeto():
     color_normalizado = [r/255.0, g/255.0, b/255.0]
     
     # Aplicar el color según el tipo de objeto
-    if app.tipo_seleccion == 'cubo' and 0 <= app.objeto_seleccionado < len(app.cubos):
-        app.cubos[app.objeto_seleccionado]['color'] = color_normalizado
-        print(f"Color aplicado al cubo: {color_normalizado}")
-    elif app.tipo_seleccion == 'esfera' and 0 <= app.objeto_seleccionado < len(app.esferas):
-        app.esferas[app.objeto_seleccionado]['color'] = color_normalizado
-        print(f"Color aplicado a la esfera: {color_normalizado}")
-    elif app.tipo_seleccion == 'torus' and 0 <= app.objeto_seleccionado < len(app.torus):
-        app.torus[app.objeto_seleccionado]['color'] = color_normalizado
-        print(f"Color aplicado al torus: {color_normalizado}")
+    if app.tipo_seleccion == 'figura' and 0 <= app.objeto_seleccionado < len(app.figuras):
+        app.figuras[app.objeto_seleccionado]['color'] = color_normalizado
+        print(f"Color aplicado a la figura: {color_normalizado}")
     elif app.tipo_seleccion == 'luz' and 0 <= app.objeto_seleccionado < len(app.luces):
         app.luces[app.objeto_seleccionado]['color'] = color_normalizado + [1.0]  # Agregar alpha
         configurar_luz(app.objeto_seleccionado)
         print(f"Color aplicado a la luz: {color_normalizado}")
     else:
+        app.color_terreno=color_normalizado
         print(f"No se puede aplicar color a objeto de tipo: {app.tipo_seleccion}")
     
     # Forzar actualización de la pantalla
     glutPostRedisplay()
-
 
 def aplicar_textura_objeto():
     """Aplicar una textura al objeto seleccionado"""
@@ -1332,20 +1457,19 @@ def aplicar_textura_objeto():
         return
     
     # Asignar la textura al objeto correspondiente
-    if app.tipo_seleccion == 'cubo':
-        if app.textura_cubo:
-            glDeleteTextures([app.textura_cubo])
-        app.textura_cubo = textura_id
-    elif app.tipo_seleccion == 'esfera':
-        if app.textura_esfera:
-            glDeleteTextures([app.textura_esfera])
-        app.textura_esfera = textura_id
-    elif app.tipo_seleccion == 'torus':
-        if app.textura_torus:
-            glDeleteTextures([app.textura_torus])
-        app.textura_torus = textura_id
+    if app.objeto_seleccionado is not None:
+        if app.textura_figuras:
+            glDeleteTextures([app.textura_figuras])
+        app.textura_figuras = textura_id
+        print(f"Textura aplicada: {file_path}")
+    else:
+        if app.textura_terreno:
+            glDeleteTextures([app.textura_terreno])
+        app.textura_terreno=textura_id
+        app.textura_path=file_path
+        print("Textura del terreno cambiada")
     
-    print(f"Textura aplicada: {file_path}")
+    glutPostRedisplay()
 
 def aplicar_eliminacion_ocultas():
     """Aplicar configuraciones de eliminación de caras y líneas ocultas"""
@@ -1377,104 +1501,34 @@ def dibujar_normales_objeto():
     glLineWidth(3)
     
     # Dibujar normales según el tipo de objeto seleccionado
-    if app.tipo_seleccion == 'cubo':
-        cubo = app.cubos[app.objeto_seleccionado]
-        dibujar_normales_cubo(cubo['pos'], cubo['escala'])
-    elif app.tipo_seleccion == 'esfera':
-        esfera = app.esferas[app.objeto_seleccionado]
-        dibujar_normales_esfera(esfera['pos'], esfera['escala'])
-    elif app.tipo_seleccion == 'torus':
-        torus = app.torus[app.objeto_seleccionado]
-        dibujar_normales_torus(torus['pos'], torus['escala'])
+    if app.tipo_seleccion == 'figura':
+        figura = app.figuras[app.objeto_seleccionado]
+        pos = figura['pos']
+        escala = figura['escala']
+        
+        glBegin(GL_LINES)
+        # Normales en los ejes principales
+        glVertex3f(pos[0], pos[1], pos[2])
+        glVertex3f(pos[0] + escala[0], pos[1], pos[2])
+        
+        glVertex3f(pos[0], pos[1], pos[2])
+        glVertex3f(pos[0], pos[1] + escala[1], pos[2])
+        
+        glVertex3f(pos[0], pos[1], pos[2])
+        glVertex3f(pos[0], pos[1], pos[2] + escala[2])
+        glEnd()
     
     glLineWidth(1)
     glEnable(GL_LIGHTING)
 
-def dibujar_normales_cubo(pos, escala):
-    """Dibujar normales de las caras del cubo"""
-    glPushMatrix()
-    glTranslatef(*pos)
-    glScalef(*escala)
-    
-    # Normales de las 6 caras del cubo
-    normales = [
-        ([0.5, 0, 0], [1, 0, 0]),     # Cara derecha
-        ([-0.5, 0, 0], [-1, 0, 0]),   # Cara izquierda
-        ([0, 0.5, 0], [0, 1, 0]),     # Cara superior
-        ([0, -0.5, 0], [0, -1, 0]),   # Cara inferior
-        ([0, 0, 0.5], [0, 0, 1]),     # Cara frontal
-        ([0, 0, -0.5], [0, 0, -1])    # Cara trasera
-    ]
-    
-    glBegin(GL_LINES)
-    for centro, normal in normales:
-        glVertex3f(*centro)
-        glVertex3f(centro[0] + normal[0]*0.8, centro[1] + normal[1]*0.8, centro[2] + normal[2]*0.8)
-    glEnd()
-    
-    glPopMatrix()
-
-def dibujar_normales_esfera(pos, escala):
-    """Dibujar algunas normales de la esfera"""
-    glPushMatrix()
-    glTranslatef(*pos)
-    glScalef(*escala)
-    
-    glBegin(GL_LINES)
-    # Normales en algunos puntos de la esfera
-    for i in range(0, 360, 45):  # Cada 45 grados
-        for j in range(-90, 91, 45):  # De polo a polo
-            angulo_h = math.radians(i)
-            angulo_v = math.radians(j)
-            
-            # Punto en la superficie de la esfera
-            x = 0.5 * math.cos(angulo_v) * math.cos(angulo_h)
-            y = 0.5 * math.sin(angulo_v)
-            z = 0.5 * math.cos(angulo_v) * math.sin(angulo_h)
-            
-            # La normal apunta hacia afuera desde el centro
-            glVertex3f(x, y, z)
-            glVertex3f(x + x*0.6, y + y*0.6, z + z*0.6)
-    glEnd()
-    
-    glPopMatrix()
-
-def dibujar_normales_torus(pos, escala):
-    """Dibujar algunas normales del torus"""
-    glPushMatrix()
-    glTranslatef(*pos)
-    glScalef(*escala)
-    
-    glBegin(GL_LINES)
-    # Normales en algunos puntos del torus
-    for i in range(0, 360, 30):  # Alrededor del torus
-        for j in range(0, 360, 60):  # Alrededor del tubo
-            u = math.radians(i)
-            v = math.radians(j)
-            
-            # Parámetros del torus
-            R = 0.5  # Radio mayor
-            r = 0.2  # Radio menor
-            
-            # Punto en la superficie
-            x = (R + r * math.cos(v)) * math.cos(u)
-            y = r * math.sin(v)
-            z = (R + r * math.cos(v)) * math.sin(u)
-            
-            # Normal aproximada
-            nx = math.cos(v) * math.cos(u)
-            ny = math.sin(v)
-            nz = math.cos(v) * math.sin(u)
-            
-            glVertex3f(x, y, z)
-            glVertex3f(x + nx*0.4, y + ny*0.4, z + nz*0.4)
-    glEnd()
-    
-    glPopMatrix()
-
 def display():
     glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT)
     glLoadIdentity()
+
+    if app.modo_juego:
+        dibujar_escena_juego()
+        glutSwapBuffers()
+        return
     
     aplicar_eliminacion_ocultas()  # Aplicar configuraciones de eliminación
     
@@ -1500,19 +1554,18 @@ def display():
         dibujar_luz(luz['pos'], luz['color'], luz['tipo_luz'],
                     luz['escala'], luz['rotacion'], seleccionada)
     
-    for i, cubo in enumerate(app.cubos):
-        seleccionado = (app.objeto_seleccionado == i and app.tipo_seleccion == 'cubo')
-        dibujar_cubo(cubo['pos'], cubo['escala'], cubo['rotacion'], cubo['color'], seleccionado)
-    
-    # FIX: Correct function call for spheres
-    for i, esfera in enumerate(app.esferas):
-        seleccionada = (app.objeto_seleccionado == i and app.tipo_seleccion == 'esfera')
-        dibujar_esfera(esfera['pos'], esfera['escala'], esfera['rotacion'], esfera['color'], seleccionada)
-    
-    # FIX: Correct function call for torus
-    for i, torus in enumerate(app.torus):
-        seleccionado = (app.objeto_seleccionado == i and app.tipo_seleccion == 'torus')
-        dibujar_torus(torus['pos'], torus['escala'], torus['rotacion'], torus['color'], seleccionado)
+    for i, figura in enumerate(app.figuras):
+        seleccionada = (app.objeto_seleccionado == i and app.tipo_seleccion == 'figura')
+        if figura['tipo'] == 'carro':
+            dibujar_carro(figura['pos'], figura['escala'], figura['rotacion'], figura['color'], seleccionada)
+        elif figura['tipo'] == 'arbol':
+            dibujar_arbol(figura['pos'], figura['escala'], figura['rotacion'], figura['color'], seleccionada)
+        elif figura['tipo'] == 'arbusto':
+            dibujar_arbusto(figura['pos'], figura['escala'], figura['rotacion'], figura['color'], seleccionada)
+        elif figura['tipo'] == 'casa':
+            dibujar_casa(figura['pos'], figura['escala'], figura['rotacion'], figura['color'], seleccionada)
+        elif figura['tipo'] == 'montana':
+            dibujar_montana(figura['pos'], figura['escala'], figura['rotacion'], figura['color'], seleccionada)
     
     dibujar_normales_objeto()  # Dibujar normales si están habilitadas
     
@@ -1549,6 +1602,7 @@ def teclado(key, x, y):
         app.escalando = False
         app.cara_seleccionada = None
         app.submenu_textura_visible = False
+        app.submenu_figuras_visible = False
         print("Modos reseteados")
     
     # Modos de edición
@@ -1557,6 +1611,7 @@ def teclado(key, x, y):
         app.modal_placing = True
         app.selection_mode = False
         app.submenu_textura_visible = False
+        app.submenu_figuras_visible = False
         print("Modo: Colocar cámara - Click en el terreno")
     
     elif k == 'l':  # Colocar luz
@@ -1564,34 +1619,23 @@ def teclado(key, x, y):
         app.modal_placing = True
         app.selection_mode = False
         app.submenu_textura_visible = False
+        app.submenu_figuras_visible = False
         print("Modo: Colocar luz - Click en el terreno")
     
-    elif k == 'b':  # Colocar cubo
-        app.modo_edicion = 'colocar_cubo'
-        app.modal_placing = True
+    elif k == 'f':  # Colocar figura
+        app.modo_edicion = 'colocar_figura'
+        app.submenu_figuras_visible = True
+        app.modal_placing = False
         app.selection_mode = False
         app.submenu_textura_visible = False
-        print("Modo: Colocar cubo - Click en el terreno")
-    
-    elif k == 'p':  # Colocar esfera
-        app.modo_edicion = 'colocar_esfera'
-        app.modal_placing = True
-        app.selection_mode = False
-        app.submenu_textura_visible = False
-        print("Modo: Colocar esfera - Click en el terreno")
-    
-    elif k == 't':  # Colocar torus
-        app.modo_edicion = 'colocar_torus'
-        app.modal_placing = True
-        app.selection_mode = False
-        app.submenu_textura_visible = False
-        print("Modo: Colocar torus - Click en el terreno")
+        print("Modo: Seleccionar figura a colocar")
     
     elif k == 's':  # Modo selección
         app.selection_mode = True
         app.modal_placing = False
         app.modo_edicion = None
         app.submenu_textura_visible = False
+        app.submenu_figuras_visible = False
         print("Modo: Selección - Click derecho en objetos")
     
     # Transformación de objetos seleccionados
@@ -1602,6 +1646,7 @@ def teclado(key, x, y):
             app.escalando = False
             app.cara_seleccionada = None
             app.submenu_textura_visible = False
+            app.submenu_figuras_visible = False
             print("Modo: Mover objeto (mouse o flechas)")
         elif k == 'r':  # Rotar
             app.rotando = True
@@ -1609,16 +1654,19 @@ def teclado(key, x, y):
             app.escalando = False
             app.cara_seleccionada = None
             app.submenu_textura_visible = False
+            app.submenu_figuras_visible = False
             print("Modo: Rotar objeto (flechas del teclado)")
         elif k == 'e':  # Escalar
             app.escalando = True
             app.dragging = False
             app.rotando = False
             app.submenu_textura_visible = False
+            app.submenu_figuras_visible = False
             print("Modo: Escalar objeto (flechas o mouse)")
         elif k == 'x':  # Eliminar
             eliminar_objeto_seleccionado()
             app.submenu_textura_visible = False
+            app.submenu_figuras_visible = False
             print("Objeto eliminado")
     
     # Visualización
@@ -1644,10 +1692,14 @@ def teclado(key, x, y):
     elif k == '3':  # Toggle textura
         app.textura_habilitada = not app.textura_habilitada
         print(f"Textura del terreno {'activada' if app.textura_habilitada else 'desactivada'}")
+        if app.textura_habilitada and app.textura_terreno is None:
+            aplicar_textura_objeto()
     
     elif k == '4':  # Toggle textura objetos
         app.textura_objetos_habilitada = not app.textura_objetos_habilitada
         print(f"Textura de objetos {'activada' if app.textura_objetos_habilitada else 'desactivada'}")
+        if app.textura_objetos_habilitada and app.textura_figuras is None:
+            aplicar_textura_objeto()
 
     elif k == '5':  # Toggle Z-buffer
         app.z_buffer_activo = not app.z_buffer_activo
@@ -1729,13 +1781,10 @@ def mouse(btn, estado, x, y):
             agregar_camara(pos)
         elif app.modo_edicion == 'colocar_luz':
             agregar_luz(pos)
-        elif app.modo_edicion == 'colocar_cubo':
-            agregar_cubo(pos)
-        elif app.modo_edicion == 'colocar_esfera':
-            agregar_esfera(pos)
-        elif app.modo_edicion == 'colocar_torus':
-            agregar_torus(pos)
-        
+        elif app.modo_edicion == 'colocar_figura':
+            # Esto se manejará en el submenú de figuras
+            pass
+        agregar_figura(pos,app.tipo_figura)
         app.modal_placing = False
         app.modo_edicion = None
         glutPostRedisplay()
@@ -1765,57 +1814,89 @@ def mouse(btn, estado, x, y):
                 app.modal_placing = False
                 app.modo_edicion = None
                 app.submenu_textura_visible = False
+                app.submenu_figuras_visible = False
                 print("Modo: Selección")
             elif 120 <= x <= 220:  # Botón Cámara
                 app.modo_edicion = 'colocar_camara'
                 app.modal_placing = True
                 app.selection_mode = False
                 app.submenu_textura_visible = False
+                app.submenu_figuras_visible = False
                 print("Modo: Colocar cámara")
             elif 230 <= x <= 330:  # Botón Luz
                 app.modo_edicion = 'colocar_luz'
                 app.modal_placing = True
                 app.selection_mode = False
                 app.submenu_textura_visible = False
+                app.submenu_figuras_visible = False
                 print("Modo: Colocar luz")
-            elif 340 <= x <= 440:  # Botón Cubo
-                app.modo_edicion = 'colocar_cubo'
-                app.modal_placing = True
-                app.selection_mode = False
+            elif 340 <= x <= 440:  # Botón Figuras
+                app.submenu_figuras_visible = not app.submenu_figuras_visible
                 app.submenu_textura_visible = False
-                print("Modo: Colocar cubo")
-            elif 450 <= x <= 550:  # Botón Esfera
-                app.modo_edicion = 'colocar_esfera'
-                app.modal_placing = True
-                app.selection_mode = False
-                app.submenu_textura_visible = False
-                print("Modo: Colocar esfera")
-            elif 560 <= x <= 660:  # Botón Torus
-                app.modo_edicion = 'colocar_torus'
-                app.modal_placing = True
-                app.selection_mode = False
-                app.submenu_textura_visible = False
-                print("Modo: Colocar torus")
-            elif 670 <= x <= 770:  # Botón Textura
+            elif 450 <= x <= 550:  # Botón Textura
                 app.submenu_textura_visible = not app.submenu_textura_visible
-            elif 780 <= x <= 880:  # Botón Eliminar
+                app.submenu_figuras_visible = False
+            elif 560 <= x <= 660:  # Botón Eliminar
                 if app.objeto_seleccionado is not None:
                     eliminar_objeto_seleccionado()
                     print("Objeto eliminado")
-            elif 890 <= x <= 990:  # Botón Vista Cam
+            elif 670 <= x <= 770:  # Botón Vista Cam
                 if app.tipo_seleccion == 'camara' and app.objeto_seleccionado is not None:
                     app.camara_actual = app.objeto_seleccionado
                     print(f"Vista desde cámara {app.objeto_seleccionado}")
-            elif 1000 <= x <= 1100:  # Botón Vista Libre
+            elif 780 <= x <= 880:  # Botón Vista Libre
                 app.camara_actual = None
                 print("Vista libre")
-            elif 1110 <= x <= 1210:  # Botón Ocultas
+            elif 890 <= x <= 990:  # Botón Ocultas
                 app.submenu_ocultas_visible = not app.submenu_ocultas_visible
-                app.submenu_textura_visible = False  # Cerrar otro submenú
+                app.submenu_textura_visible = False
+                app.submenu_figuras_visible = False
+            elif 1000 <= x <= 1100:  # Botón Juego
+                app.modo_juego = not app.modo_juego
+                print(f"Modo juego {'activado' if app.modo_juego else 'desactivado'}")
+                glutPostRedisplay()
             return
         
-        elif app.submenu_ocultas_visible and 1110 <= x <= 1290 and 40 <= y <= 160:
-            if 1120 <= x <= 1280:  # Ancho de las opciones
+        # Submenú de figuras
+        elif app.submenu_figuras_visible and 340 <= x <= 540 and 40 <= y <= 200:
+            if 350 <= x <= 540:  # Ancho de las opciones
+                if 60 <= y <= 80:  # Carro
+                    app.modo_edicion = 'colocar_figura'
+                    app.modal_placing = True
+                    app.tipo_figura = 'carro'
+                    app.submenu_figuras_visible = False
+                    print("Modo: Colocar carro - Click en el terreno")
+                elif 90 <= y <= 110:  # Árbol
+                    app.modo_edicion = 'colocar_figura'
+                    app.modal_placing = True
+                    app.tipo_figura = 'arbol'
+                    app.submenu_figuras_visible = False
+                    print("Modo: Colocar árbol - Click en el terreno")
+                elif 120 <= y <= 140:  # Arbusto
+                    app.modo_edicion = 'colocar_figura'
+                    app.modal_placing = True
+                    app.tipo_figura = 'arbusto'
+                    app.submenu_figuras_visible = False
+                    print("Modo: Colocar arbusto - Click en el terreno")
+                elif 150 <= y <= 170:  # Casa
+                    app.modo_edicion = 'colocar_figura'
+                    app.modal_placing = True
+                    app.tipo_figura = 'casa'
+                    app.submenu_figuras_visible = False
+                    print("Modo: Colocar casa - Click en el terreno")
+                elif 180 <= y <= 200:  # Montaña
+                    app.modo_edicion = 'colocar_figura'
+                    app.modal_placing = True
+                    app.tipo_figura = 'montana'
+                    app.submenu_figuras_visible = False
+                    print("Modo: Colocar montaña - Click en el terreno")
+            app.submenu_figuras_visible = False
+            glutPostRedisplay()
+            return
+        
+        # Submenú de ocultas
+        elif app.submenu_ocultas_visible and 890 <= x <= 1070 and 40 <= y <= 160:
+            if 900 <= x <= 1070:  # Ancho de las opciones
                 if 55 <= y <= 65:  # Z-Buffer toggle
                     app.z_buffer_activo = not app.z_buffer_activo
                     print(f"Z-Buffer {'activado' if app.z_buffer_activo else 'desactivado'}")
@@ -1835,10 +1916,12 @@ def mouse(btn, estado, x, y):
                     app.modo_visualizacion = "puntos"
                     print("Modo: Puntos")
             app.submenu_ocultas_visible = False
-
-        elif app.submenu_textura_visible and 670 <= x <= 870 and 40 <= y <= 100:
-            # Submenú de textura con áreas más amplias
-            if 675 <= x <= 865:  # Área más amplia para las opciones
+            glutPostRedisplay()
+            return
+        
+        # Submenú de textura
+        elif app.submenu_textura_visible and 450 <= x <= 650 and 40 <= y <= 100:
+            if 455 <= x <= 645:  # Área más amplia para las opciones
                 if 45 <= y <= 65:  # Aplicar Color - área más amplia
                     aplicar_color_objeto()
                     app.submenu_textura_visible = False
@@ -1849,19 +1932,14 @@ def mouse(btn, estado, x, y):
                     app.submenu_textura_visible = False
                     glutPostRedisplay()
                     return
-            # Solo cerrar si no se hizo clic en ninguna opción
             app.submenu_textura_visible = False
             glutPostRedisplay()
             return
         
         # Detectar cara para escalado si estamos en modo escalado
         if app.escalando:
-            if app.tipo_seleccion == 'cubo':
-                app.cara_seleccionada = detectar_cara_cubo(x, y)
-            elif app.tipo_seleccion == 'esfera':
-                app.cara_seleccionada = detectar_cara_esfera(x, y)
-            elif app.tipo_seleccion == 'torus':
-                app.cara_seleccionada = detectar_cara_torus(x, y)
+            if app.tipo_seleccion == 'figura':
+                app.cara_seleccionada = detectar_cara_figura(x, y)
             
             if app.cara_seleccionada:
                 print(f"Dirección seleccionada para escalado: {app.cara_seleccionada}")
@@ -1872,6 +1950,15 @@ def mouse(btn, estado, x, y):
             print("Movimiento finalizado")
         app.cara_seleccionada = None
         
+    # Colocación de figuras después de seleccionar del submenú
+    if app.modo_edicion == 'colocar_figura' and btn == GLUT_LEFT_BUTTON and estado == GLUT_DOWN:
+        pos = obtener_posicion_3d(x, y)
+        if pos is None:
+            print("No se puede determinar la posición del terreno")
+            return
+        
+        agregar_figura(pos, app.tipo_figura)
+        glutPostRedisplay()
 
 def motion(x, y):
     dx = x - app.mouse_anterior[0]
@@ -1899,23 +1986,11 @@ def motion(x, y):
                 luz['pos'][2] = pos[2]
                 configurar_luz(app.objeto_seleccionado)
                 
-            elif app.tipo_seleccion == 'cubo':
-                cubo = app.cubos[app.objeto_seleccionado]
-                cubo['pos'][0] = pos[0]
-                cubo['pos'][1] = pos[1] if pos[1] > 0 else 0  # No permitir valores negativos en Y
-                cubo['pos'][2] = pos[2]
-            
-            elif app.tipo_seleccion == 'esfera':
-                esfera = app.esferas[app.objeto_seleccionado]
-                esfera['pos'][0] = pos[0]
-                esfera['pos'][1] = pos[1] if pos[1] > 0 else 0  # No permitir valores negativos en Y
-                esfera['pos'][2] = pos[2]
-            
-            elif app.tipo_seleccion == 'torus':
-                torus = app.torus[app.objeto_seleccionado]
-                torus['pos'][0] = pos[0]
-                torus['pos'][1] = pos[1] if pos[1] > 0 else 0  # No permitir valores negativos en Y
-                torus['pos'][2] = pos[2]
+            elif app.tipo_seleccion == 'figura':
+                figura = app.figuras[app.objeto_seleccionado]
+                figura['pos'][0] = pos[0]
+                figura['pos'][1] = pos[1] if pos[1] > 0 else 0  # No permitir valores negativos en Y
+                figura['pos'][2] = pos[2]
         
         glutPostRedisplay()
         return
@@ -1938,7 +2013,7 @@ def abrir_ventana_3d():
     glutInit(sys.argv)
     glutInitDisplayMode(GLUT_DOUBLE | GLUT_RGB | GLUT_DEPTH)
     glutInitWindowSize(app.WIDTH, app.HEIGHT)
-    glutCreateWindow(b"Editor 3D Mejorado - Transformaciones Directas")
+    glutCreateWindow(b"Editor 3D Mejorado - Figuras Complejas")
     
     init()
     configurar_proyeccion()
@@ -1946,7 +2021,7 @@ def abrir_ventana_3d():
     glutDisplayFunc(display)
     glutReshapeFunc(reshape)
     glutKeyboardFunc(teclado)
-    glutSpecialFunc(teclado_especial)  # Agregar manejo de teclas especiales
+    glutSpecialFunc(teclado_especial)
     glutMouseFunc(mouse)
     glutMotionFunc(motion)
     glutIdleFunc(idle)
@@ -1954,9 +2029,7 @@ def abrir_ventana_3d():
     print("=== CONTROLES MEJORADOS ===")
     print("C - Colocar cámara")
     print("L - Colocar luz") 
-    print("B - Colocar cubo")
-    print("P - Colocar esfera")
-    print("T - Colocar torus (dona)")
+    print("F - Colocar figura (carro, árbol, arbusto, casa, montaña)")
     print("S - Modo selección")
     print("Clic derecho - Seleccionar objeto")
     print("")
