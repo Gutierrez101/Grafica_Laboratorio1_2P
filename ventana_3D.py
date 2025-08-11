@@ -1,10 +1,9 @@
-# Ventana de visualización 3D con OpenGL - Versión Mejorada
+# Ventana de visualización 3D con OpenGL - Versión Corregida
 from OpenGL.GL import *
 from OpenGL.GLU import *
 from OpenGL.GLUT import *
 from OpenGL.GLUT import GLUT_BITMAP_9_BY_15
 from OpenGL.GLUT import GLUT_KEY_UP, GLUT_KEY_DOWN, GLUT_KEY_LEFT, GLUT_KEY_RIGHT
-from juego import dibujar_escena_juego
 
 import sys
 import math
@@ -17,7 +16,8 @@ import random
 # Estados de la aplicación
 class AppState:
     def __init__(self):
-        self.modo_juego = False
+        self.submenu_fractales_visible = False  # Nuevo submenú para fractales
+        self.modo_juego = False  # Cambiar esto, ya no lo usaremos como bandera
 
         self.back_face_culling = True  # Eliminación de caras traseras
         self.z_buffer_activo = True    # Z-buffer para superficies ocultas
@@ -33,6 +33,7 @@ class AppState:
         self.modal_placing = False
         self.selection_mode = False
         self.modo_edicion = None
+        self.tipo_figura = None  # AGREGADO: tipo de figura a colocar
 
         self.modo_perspectiva = True
         self.zoom = 1.0
@@ -277,6 +278,22 @@ def dibujar_manipuladores_escalado(pos, escala):
     glPopMatrix()
     glEnable(GL_LIGHTING)
 
+def configurar_material_carro():
+    """Configurar material específico para el carro - CORREGIDO"""
+    # Material base para la carrocería (negro metálico)
+    material_ambient = [0.1, 0.1, 0.1, 1.0]
+    material_diffuse = [0.2, 0.2, 0.2, 1.0]
+    material_specular = [0.3, 0.3, 0.3, 1.0]
+    shininess = 50.0
+    
+    glMaterialfv(GL_FRONT_AND_BACK, GL_AMBIENT, material_ambient)
+    glMaterialfv(GL_FRONT_AND_BACK, GL_DIFFUSE, material_diffuse)
+    glMaterialfv(GL_FRONT_AND_BACK, GL_SPECULAR, material_specular)
+    glMaterialf(GL_FRONT_AND_BACK, GL_SHININESS, shininess)
+    
+    # Desactivar emisión para evitar parpadeos
+    glMaterialfv(GL_FRONT_AND_BACK, GL_EMISSION, [0.0, 0.0, 0.0, 1.0])
+
 def dibujar_carro(pos, escala=(1,1,1), rotacion=(0,0,0), color=(0.8, 0.2, 0.2), seleccionado=False):
     glPushMatrix()
     glTranslatef(*pos)
@@ -284,6 +301,10 @@ def dibujar_carro(pos, escala=(1,1,1), rotacion=(0,0,0), color=(0.8, 0.2, 0.2), 
     glRotatef(rotacion[1], 0, 1, 0)
     glRotatef(rotacion[2], 0, 0, 1)
     glScalef(*escala)
+    glDisable(GL_LIGHTING)
+    
+    # Configurar material del carro al inicio - CORREGIDO
+    configurar_material_carro()
     
     if seleccionado:
         glDisable(GL_LIGHTING)
@@ -300,99 +321,160 @@ def dibujar_carro(pos, escala=(1,1,1), rotacion=(0,0,0), color=(0.8, 0.2, 0.2), 
         glEnd()
         
         glEnable(GL_LIGHTING)
+        glPolygonMode(GL_FRONT_AND_BACK, GL_FILL)  # CORREGIDO: restaurar modo sólido
     
-    # Aplicar color/textura según configuración
-    if app.textura_figuras and app.textura_objetos_habilitada:
-        glEnable(GL_TEXTURE_2D)
-        glBindTexture(GL_TEXTURE_2D, app.textura_figuras)
-        glColor3f(1, 1, 1)  # Color blanco para textura
-    else:
-        glDisable(GL_TEXTURE_2D)
-        glColor3f(*color)  # Usar color pasado como parámetro
+    # CARROCERÍA PRINCIPAL - SIMPLIFICADA PARA EVITAR PARPADEOS
+    glColor3f(0.1, 0.1, 0.1)  # Negro para carrocería
     
-   # --- Cuerpo principal del carro ---
-    # Chasis inferior
+        # Chasis inferior (parte baja del carro)
     glPushMatrix()
-    glTranslatef(0, 0.3, 0)
-    glScalef(1.8, 0.4, 3.5)
+    glTranslatef(0, 0.2, 0)
+    glScalef(1.8, 0.3, 0.9)
     glutSolidCube(1.0)
     glPopMatrix()
     
-    # Capó delantero
+    # Capó delantero (inclinado)
     glPushMatrix()
-    glTranslatef(0, 0.5, 1.0)
-    glScalef(1.6, 0.3, 1.2)
+    glTranslatef(0.65, 0.5, 0)
+    glRotatef(-12, 0, 0, 1)
+    glScalef(0.5, 0.3, 0.9)
     glutSolidCube(1.0)
     glPopMatrix()
     
-    # Parte trasera
+    # Parte central (habitáculo)
     glPushMatrix()
-    glTranslatef(0, 0.5, -1.0)
-    glScalef(1.6, 0.4, 1.2)
+    glTranslatef(0, 1.0, 0)
+    glScalef(0.8, 0.05, 0.8)
     glutSolidCube(1.0)
     glPopMatrix()
     
-    # Techo curvado
+    # Tronco trasero (inclinado)
     glPushMatrix()
-    glTranslatef(0, 0.9, 0)
-    glScalef(1.2, 0.3, 2.0)
+    glTranslatef(-0.65, 0.30, 0)
+    glRotatef(10, 0, 0, 1)
+    glScalef(0.55, 0.60, 0.9)
     glutSolidCube(1.0)
     glPopMatrix()
     
-    # Parabrisas (vidrio)
-    glColor4f(0.3, 0.4, 0.5, 0.5)  # Color azulado transparente
-    glBegin(GL_QUADS)
-    glVertex3f(-0.6, 0.7, 0.5); glVertex3f(0.6, 0.7, 0.5)
-    glVertex3f(0.6, 0.9, 0.2); glVertex3f(-0.6, 0.9, 0.2)
-    glEnd()
-    
-    # Ventanas laterales
-    glBegin(GL_QUADS)
-    glVertex3f(0.6, 0.7, -0.5); glVertex3f(0.6, 0.7, 0.5)
-    glVertex3f(0.6, 0.9, 0.2); glVertex3f(0.6, 0.9, -0.2)
-    glEnd()
-    
-    glBegin(GL_QUADS)
-    glVertex3f(-0.6, 0.7, -0.5); glVertex3f(-0.6, 0.7, 0.5)
-    glVertex3f(-0.6, 0.9, 0.2); glVertex3f(-0.6, 0.9, -0.2)
-    glEnd()
-    
-    # Faros delanteros
-    glColor3f(0.9, 0.9, 0.7)  # Color amarillo claro
+    # Parachoques delantero
     glPushMatrix()
-    glTranslatef(0.7, 0.5, 1.3)
-    glutSolidSphere(0.15, 16, 16)
+    glTranslatef(1.0, 0.3, 0)
+    glScalef(0.1, 0.2, 0.85)
+    glutSolidCube(1.0)
     glPopMatrix()
     
+    # Parachoques trasero
     glPushMatrix()
-    glTranslatef(-0.7, 0.5, 1.3)
-    glutSolidSphere(0.15, 16, 16)
+    glTranslatef(-1.0, 0.3, 0)
+    glScalef(0.1, 0.2, 0.85)
+    glutSolidCube(1.0)
     glPopMatrix()
     
-    # Luces traseras
-    glColor3f(0.8, 0.1, 0.1)  # Rojo
-    glPushMatrix()
-    glTranslatef(0.5, 0.5, -1.5)
-    glutSolidSphere(0.15, 16, 16)
-    glPopMatrix()
+    # ----------------------------
+    # DETALLES DEL CARRO
+    # ----------------------------
     
-    glPushMatrix()
-    glTranslatef(-0.5, 0.5, -1.5)
-    glutSolidSphere(0.15, 16, 16)
-    glPopMatrix()
-    
-    # Ruedas (mejoradas)
-    glColor3f(0.1, 0.1, 0.1)  # Negro
-    for x in [-0.8, 0.8]:
-        for z in [-1.2, 1.2]:
+    # Ruedas (negras con aros plateados)
+    for dx in [-0.7, 0.7]:
+        for dz in [-0.4, 0.4]:
+            # Neumático
             glPushMatrix()
-            glTranslatef(x, 0.1, z)
-            glutSolidTorus(0.1, 0.25, 16, 16)  # Neumático
-            glColor3f(0.5, 0.5, 0.5)  # Gris para la llanta
-            glutSolidTorus(0.05, 0.15, 16, 16)
+            glTranslatef(dx, 0.05, dz)
+            glColor3f(0.05, 0.05, 0.05)
+            glutSolidTorus(0.08, 0.15, 16, 32)
+            # Aro
+            glColor3f(0.7, 0.7, 0.7)
+            glutSolidTorus(0.02, 0.12, 12, 24)
             glPopMatrix()
     
-    glDisable(GL_TEXTURE_2D)
+    # Parrilla delantera
+    glPushMatrix()
+    glTranslatef(0.95, 0.4, 0)
+    glScalef(0.01, 0.15, 0.5)
+    glColor3f(0.3, 0.3, 0.3)
+    glutSolidCube(1.0)
+    glPopMatrix()
+    
+    # Luces delanteras (xenón azulado)
+    for dz in [-0.3, 0.3]:
+        glPushMatrix()
+        glTranslatef(0.95, 0.4, dz)
+        glColor3f(1.0, 1.0, 0.0)
+        glutSolidSphere(0.06, 16, 16)
+        glPopMatrix()
+    
+    # Luces traseras (rojas)
+    for dz in [-0.3, 0.3]:
+        glPushMatrix()
+        glTranslatef(-0.95, 0.4, dz)
+        glColor3f(1.0, 0.1, 0.1)
+        glutSolidSphere(0.06, 16, 16)
+        glPopMatrix()
+    
+    # Retrovisores
+    for dz in [-0.5, 0.5]:
+        glPushMatrix()
+        glTranslatef(0.4, 0.8, dz)
+        glColor3f(0.0, 0.0, 0.0)
+        glRotatef(10 if dz > 0 else -10, 0, 1, 0)
+        glScalef(0.1, 0.05, 0.15)
+        glutSolidCube(1.0)
+        glPopMatrix()
+    
+    # ----------------------------
+    # INTERIOR (mejorado)
+    # ----------------------------
+    
+    # Asientos deportivos
+    glMaterialfv(GL_FRONT, GL_AMBIENT_AND_DIFFUSE, [0.15, 0.15, 0.15, 1.0])
+    for dz in [-0.2, 0.2]:
+        # Asiento
+        glPushMatrix()
+        glTranslatef(0.0, 0.60, dz)
+        glColor3f(0.0, 0.0, 0.0)
+        glScalef(0.3, 0.1, 0.25)
+        glutSolidCube(1.0)
+        glPopMatrix()
+        # Respaldo
+        glPushMatrix()
+        glTranslatef(-0.2, 0.75, dz)
+        glColor3f(0.0, 0.0, 0.0)
+        glScalef(0.1, 0.3, 0.25)
+        glutSolidCube(1.0)
+        glPopMatrix()
+    
+    # Volante deportivo
+    glPushMatrix()
+    glTranslatef(0.3, 0.75, 0)
+    glRotatef(90, 0, 1, 0)
+    glColor3f(0.0, 0.0, 0.0)
+    glutSolidTorus(0.02, 0.1, 12, 24)
+    glPopMatrix()
+    
+
+        # Material para vidrios
+    glMaterialfv(GL_FRONT, GL_AMBIENT_AND_DIFFUSE, [0.8, 0.9, 1.0, 0.3])
+    glMaterialfv(GL_FRONT, GL_SPECULAR, [0.9, 0.9, 0.9, 0.5])
+    glMaterialf(GL_FRONT, GL_SHININESS, 120)
+        
+        # Parabrisas delantero (curvo)
+    glPushMatrix()
+    glTranslatef(0.4, 0.85, 0)
+    glRotatef(18, 0, 0, 1)
+    glScalef(0.01, 0.3, 0.9)
+    glutSolidCube(1.0)
+    glPopMatrix()
+        
+        # Vidrio trasero
+    glPushMatrix()
+    glTranslatef(-0.4, 0.8, 0)
+    glRotatef(-12, 0, 0, 1)
+    glScalef(0.01, 0.4, 0.9)
+    glutSolidCube(1.0)
+    glPopMatrix()
+    
+    glDisable(GL_BLEND)
+    
     glPopMatrix()
     
     # Dibujar manipuladores de escalado si está seleccionado y en modo escalado
@@ -422,6 +504,7 @@ def dibujar_arbol(pos, escala=(1,1,1), rotacion=(0,0,0), color=(0.4, 0.2, 0.1), 
         glEnd()
         
         glEnable(GL_LIGHTING)
+        glPolygonMode(GL_FRONT_AND_BACK, GL_FILL)
     
     # Aplicar color/textura según configuración
     if app.textura_figuras and app.textura_objetos_habilitada:
@@ -451,7 +534,6 @@ def dibujar_arbol(pos, escala=(1,1,1), rotacion=(0,0,0), color=(0.4, 0.2, 0.1), 
         glPopMatrix()
     
     glDisable(GL_TEXTURE_2D)
-    glPolygonMode(GL_FRONT_AND_BACK, GL_FILL)
     glPopMatrix()
     
     if seleccionado and app.escalando and app.tipo_seleccion == 'figura':
@@ -480,6 +562,7 @@ def dibujar_arbusto(pos, escala=(1,1,1), rotacion=(0,0,0), color=(0.1, 0.5, 0.1)
         glEnd()
         
         glEnable(GL_LIGHTING)
+        glPolygonMode(GL_FRONT_AND_BACK, GL_FILL)
     
     # Aplicar color/textura según configuración
     if app.textura_figuras and app.textura_objetos_habilitada:
@@ -529,7 +612,6 @@ def dibujar_arbusto(pos, escala=(1,1,1), rotacion=(0,0,0), color=(0.1, 0.5, 0.1)
     glEnable(GL_LIGHTING)
     
     glDisable(GL_TEXTURE_2D)
-    glPolygonMode(GL_FRONT_AND_BACK, GL_FILL)
     glPopMatrix()
     
     if seleccionado and app.escalando and app.tipo_seleccion == 'figura':
@@ -558,6 +640,7 @@ def dibujar_casa(pos, escala=(1,1,1), rotacion=(0,0,0), color=(0.8, 0.6, 0.4), s
         glEnd()
         
         glEnable(GL_LIGHTING)
+        glPolygonMode(GL_FRONT_AND_BACK, GL_FILL)
     
     # Aplicar color/textura según configuración
     if app.textura_figuras and app.textura_objetos_habilitada:
@@ -579,28 +662,28 @@ def dibujar_casa(pos, escala=(1,1,1), rotacion=(0,0,0), color=(0.8, 0.6, 0.4), s
     glColor3f(0.5, 0.2, 0.1)  # Color rojizo para tejas
     glBegin(GL_TRIANGLES)
     # Cara frontal
-    glVertex3f(-0.9, 1.0, 0.9)
-    glVertex3f(0.9, 1.0, 0.9)
-    glVertex3f(0.0, 2.0, 0.0)
+    glVertex3f(-0.9, 0.5, 0.9)
+    glVertex3f(0.9, 0.5, 0.9)
+    glVertex3f(0.0, 1.5, 0.0)
     # Cara derecha
-    glVertex3f(0.9, 1.0, 0.9)
-    glVertex3f(0.9, 1.0, -0.9)
-    glVertex3f(0.0, 2.0, 0.0)
+    glVertex3f(0.9, 0.5, 0.9)
+    glVertex3f(0.9, 0.5, -0.9)
+    glVertex3f(0.0, 1.5, 0.0)
     # Cara trasera
-    glVertex3f(0.9, 1.0, -0.9)
-    glVertex3f(-0.9, 1.0, -0.9)
-    glVertex3f(0.0, 2.0, 0.0)
+    glVertex3f(0.9, 0.5, -0.9)
+    glVertex3f(-0.9, 0.5, -0.9)
+    glVertex3f(0.0, 1.5, 0.0)
     # Cara izquierda
-    glVertex3f(-0.9, 1.0, -0.9)
-    glVertex3f(-0.9, 1.0, 0.9)
-    glVertex3f(0.0, 2.0, 0.0)
+    glVertex3f(-0.9, 0.5, -0.9)
+    glVertex3f(-0.9, 0.5, 0.9)
+    glVertex3f(0.0, 1.5, 0.0)
     glEnd()
     
     # Chimenea
     glColor3f(0.6, 0.6, 0.6)
     glPushMatrix()
-    glTranslatef(0.5, 1.5, -0.5)
-    glScalef(0.2, 0.8, 0.2)
+    glTranslatef(0.5, 1.0, -0.5)
+    glScalef(0.2, 0.5, 0.2)
     glutSolidCube(1.0)
     glPopMatrix()
     
@@ -608,7 +691,7 @@ def dibujar_casa(pos, escala=(1,1,1), rotacion=(0,0,0), color=(0.8, 0.6, 0.4), s
     # Puerta principal
     glColor3f(0.4, 0.3, 0.2)
     glPushMatrix()
-    glTranslatef(0.0, -0.5, 0.9)
+    glTranslatef(0.0, 0.0, 0.9)
     glScalef(0.4, 0.8, 0.1)
     glutSolidCube(1.0)
     glPopMatrix()
@@ -616,9 +699,9 @@ def dibujar_casa(pos, escala=(1,1,1), rotacion=(0,0,0), color=(0.8, 0.6, 0.4), s
     # Ventanas
     glColor4f(0.3, 0.5, 0.8, 0.7)  # Color de vidrio
     for x in [-0.6, 0.6]:
-        for z in [-0.5, 0.5]:
+        for z in [-0.9, 0.9]:
             glPushMatrix()
-            glTranslatef(x, 0.3, z)
+            glTranslatef(x, 0.25, z)
             glScalef(0.3, 0.4, 0.1)
             glutSolidCube(1.0)
             glPopMatrix()
@@ -626,9 +709,9 @@ def dibujar_casa(pos, escala=(1,1,1), rotacion=(0,0,0), color=(0.8, 0.6, 0.4), s
     # Marco de ventanas
     glColor3f(0.3, 0.2, 0.1)
     for x in [-0.6, 0.6]:
-        for z in [-0.5, 0.5]:
+        for z in [-0.9, 0.9]:
             glPushMatrix()
-            glTranslatef(x, 0.3, z)
+            glTranslatef(x, 0.25, z)
             glScalef(0.35, 0.45, 0.11)
             glutWireCube(1.0)
             glPopMatrix()
@@ -637,100 +720,106 @@ def dibujar_casa(pos, escala=(1,1,1), rotacion=(0,0,0), color=(0.8, 0.6, 0.4), s
     glColor3f(0.5, 0.4, 0.3)
     for i in range(3):
         glPushMatrix()
-        glTranslatef(0, -0.6 - i*0.1, 0.9 + i*0.1)
+        glTranslatef(0, -0.4, 0.9)
         glScalef(0.5 - i*0.1, 0.1, 0.3 - i*0.1)
         glutSolidCube(1.0)
         glPopMatrix()
     
     glDisable(GL_TEXTURE_2D)
-    glPolygonMode(GL_FRONT_AND_BACK, GL_FILL)
     glPopMatrix()
     
     if seleccionado and app.escalando and app.tipo_seleccion == 'figura':
         dibujar_manipuladores_escalado(pos, escala)
 
-def dibujar_montana(pos, escala=(1,1,1), rotacion=(0,0,0), color=(0.5, 0.4, 0.3), seleccionado=False):
+def dibujar_montana(pos, escala=(1, 1, 1), rotacion=(0, 0, 0), color=(0.5, 0.4, 0.3), seleccionado=False):
     glPushMatrix()
     glTranslatef(*pos)
     glRotatef(rotacion[0], 1, 0, 0)
     glRotatef(rotacion[1], 0, 1, 0)
     glRotatef(rotacion[2], 0, 0, 1)
     glScalef(*escala)
-    
+
     if seleccionado:
         glDisable(GL_LIGHTING)
         glColor3f(1, 0, 0)
         glPolygonMode(GL_FRONT_AND_BACK, GL_LINE)
         glLineWidth(4)
-        
-        # Dibujar ejes de transformación
+
+        # Ejes
         glLineWidth(2)
         glBegin(GL_LINES)
         glColor3f(1, 0, 0); glVertex3f(0, 0, 0); glVertex3f(1.5, 0, 0)
         glColor3f(0, 1, 0); glVertex3f(0, 0, 0); glVertex3f(0, 1.5, 0)
         glColor3f(0, 0, 1); glVertex3f(0, 0, 0); glVertex3f(0, 0, 1.5)
         glEnd()
-        
+
         glEnable(GL_LIGHTING)
-    
-    # Aplicar color/textura según configuración
-    if app.textura_figuras and app.textura_objetos_habilitada:
-        glEnable(GL_TEXTURE_2D)
-        glBindTexture(GL_TEXTURE_2D, app.textura_figuras)
-        glColor3f(1, 1, 1)  # Color blanco para textura
-    else:
-        glDisable(GL_TEXTURE_2D)
-        glColor3f(*color)  # Usar color pasado como parámetro
-    
-   # Base de la montaña (más detallada)
+        glPolygonMode(GL_FRONT_AND_BACK, GL_FILL)
+
+    # Material roca (marrón)
+    glMaterialfv(GL_FRONT, GL_AMBIENT, [0.3, 0.2, 0.1, 1.0])
+    glMaterialfv(GL_FRONT, GL_DIFFUSE, [0.5, 0.35, 0.2, 1.0])
+    glMaterialfv(GL_FRONT, GL_SPECULAR, [0.1, 0.1, 0.1, 1.0])
+    glMaterialf(GL_FRONT, GL_SHININESS, 10)
+
+    # Parámetros de la montaña
+    subdivisions = 32  # Más detalle para evitar agujeros
+    height = 2.5
+    base_radius = 1.8
+    layers = 6
+
     glPushMatrix()
-    glScalef(1.5, 1.5, 1.5)  # Más ancha
-    
-    # Usar una pirámide con lados escalonados para más realismo
+    glScalef(1.5, 1.5, 1.5)
+
+    # Capas de la montaña
+    for layer in range(layers):
+        h1 = height * (layer / layers)
+        h2 = height * ((layer + 1) / layers)
+        r1 = base_radius * (1 - (layer / (layers + 1)))
+        r2 = base_radius * (1 - ((layer + 1) / (layers + 1)))
+
+        glBegin(GL_QUAD_STRIP)
+        for i in range(subdivisions + 1):
+            angle = i * 2.0 * math.pi / subdivisions
+            x = math.cos(angle)
+            z = math.sin(angle)
+
+            # Variación suave
+            variation = 0.9 + 0.1 * math.sin(angle * 3 + layer)
+
+            glVertex3f(x * r1 * variation, h1, z * r1 * variation)
+            glVertex3f(x * r2 * variation, h2, z * r2 * variation)
+        glEnd()
+
+    # Tapa superior de la montaña (para evitar agujero en la cima)
     glBegin(GL_TRIANGLE_FAN)
-    glVertex3f(0, 2, 0)  # Pico
-    for i in range(13):  # 12 lados + 1 para cerrar
-        ang = i * 2 * math.pi / 12
-        x = math.cos(ang)
-        z = math.sin(ang)
-        
-        # Crear escalones en la montaña
-        if i % 3 == 0:
-            glVertex3f(x, 0.5, z)
-            glVertex3f(x*0.8, 0.8, z*0.8)
-        elif i % 3 == 1:
-            glVertex3f(x*0.8, 0.8, z*0.8)
-            glVertex3f(x*0.5, 1.2, z*0.5)
-        else:
-            glVertex3f(x*0.5, 1.2, z*0.5)
-            glVertex3f(x*0.2, 1.7, z*0.2)
+    glVertex3f(0, height, 0)
+    for i in range(subdivisions + 1):
+        angle = i * 2.0 * math.pi / subdivisions
+        x = math.cos(angle)
+        z = math.sin(angle)
+        variation = 0.9 + 0.1 * math.sin(angle * 3 + layers)
+        glVertex3f(x * r2 * variation, h2, z * r2 * variation)
     glEnd()
-    
-    # Detalles de rocas en la base
-    glColor3f(0.4, 0.35, 0.3)  # Color más oscuro para rocas
-    for i in range(8):
-        ang = i * 2 * math.pi / 8
-        x = math.cos(ang) * 1.2
-        z = math.sin(ang) * 1.2
-        glPushMatrix()
-        glTranslatef(x, 0.1, z)
-        glutSolidSphere(0.2 + random.random()*0.1, 8, 8)
-        glPopMatrix()
-    
-    # Nieve en la cima
-    glColor3f(0.9, 0.9, 0.95)
+
+    # Pico nevado
+    glMaterialfv(GL_FRONT, GL_AMBIENT, [0.8, 0.85, 0.9, 1.0])
+    glMaterialfv(GL_FRONT, GL_DIFFUSE, [0.9, 0.95, 1.0, 1.0])
+    glMaterialfv(GL_FRONT, GL_SPECULAR, [0.7, 0.7, 0.7, 1.0])
+    glMaterialf(GL_FRONT, GL_SHININESS, 60)
+
     glPushMatrix()
-    glTranslatef(0, 1.5, 0)
-    glutSolidSphere(0.5, 8, 8)
+    glTranslatef(0, height * 0.95, 0)
+    glRotatef(-90, 1, 0, 0)
+    glutSolidCone(base_radius * 0.25, height * 0.4, subdivisions, 4)
     glPopMatrix()
-    
-    glPopMatrix()
-    
+
+    glPopMatrix()  # Fin del escalado 1.5
     glDisable(GL_TEXTURE_2D)
-    glPolygonMode(GL_FRONT_AND_BACK, GL_FILL)
     glPopMatrix()
-    
-    if seleccionado and app.escalando and app.tipo_seleccion == 'figura':
+
+    # Opcional: manipulación si está seleccionado
+    if seleccionado and hasattr(app, 'escalando') and app.escalando and getattr(app, 'tipo_seleccion', '') == 'figura':
         dibujar_manipuladores_escalado(pos, escala)
 
 def dibujar_camara(pos, look_at, up, escala=(1,1,1), rotacion=(0,0,0), seleccionada=False):
@@ -921,13 +1010,13 @@ def dibujar_barra_herramientas():
         ("Seleccionar", 10, app.selection_mode),
         ("Camara", 120, app.modo_edicion == 'colocar_camara'),
         ("Luz", 230, app.modo_edicion == 'colocar_luz'),
-        ("Figuras", 340, app.modo_edicion == 'colocar_figura'),  # Botón único para figuras
+        ("Figuras", 340, app.modo_edicion == 'colocar_figura'),
         ("Textura", 450, False),
         ("Eliminar", 560, False),
         ("Vista Cam", 670, app.camara_actual is not None),
         ("Vista Libre", 780, app.camara_actual is None),
         ("Ocultas", 890, False),
-        ("Juego", 1000, app.modo_juego)
+        ("Fractales 3D", 1000, app.modo_juego)
     ]
     
     for nombre, x, activo in botones:
@@ -1038,6 +1127,28 @@ def dibujar_barra_herramientas():
             glRasterPos2f(x, y)
             for c in texto:
                 glutBitmapCharacter(GLUT_BITMAP_9_BY_15, ord(c))
+    
+    # Submenú de fractales
+    if app.submenu_fractales_visible:
+        glColor3f(0.25, 0.35, 0.45)
+        glBegin(GL_QUADS)
+        glVertex2f(1000, 40)
+        glVertex2f(1200, 40)
+        glVertex2f(1200, 160)
+        glVertex2f(1000, 160)
+        glEnd()
+        
+        opciones_fractales = [
+            ("Esponja Menger", 1010, 60),
+            ("Arbol Fractal", 1010, 90),
+            ("Sierpinski", 1010, 120)
+        ]
+        
+        for texto, x, y in opciones_fractales:
+            glColor3f(1, 1, 1)
+            glRasterPos2f(x, y)
+            for char in texto:
+                glutBitmapCharacter(GLUT_BITMAP_9_BY_15, ord(char))
 
     # Restaurar estado
     glEnable(GL_DEPTH_TEST)
@@ -1049,6 +1160,7 @@ def dibujar_barra_herramientas():
     glMatrixMode(GL_MODELVIEW)
 
 def obtener_posicion_3d(x, y):
+    """CORREGIDO: Obtener posición 3D desde coordenadas de pantalla"""
     glMatrixMode(GL_MODELVIEW)
     glPushMatrix()
     glLoadIdentity()
@@ -1093,6 +1205,7 @@ def obtener_posicion_3d(x, y):
     return None
 
 def seleccionar_objeto(x, y):
+    """CORREGIDO: Selección de objetos mejorada"""
     glSelectBuffer(512)
     glRenderMode(GL_SELECT)
     glInitNames()
@@ -1233,7 +1346,8 @@ def agregar_figura(posicion, tipo_figura):
         'escala': [1.0, 1.0, 1.0],
         'rotacion': [0.0, 0.0, 0.0],
         'color': [0.8, 0.2, 0.2],  # Color inicial
-        'tipo': tipo_figura
+        'tipo': tipo_figura,
+        'nivel': 3  # Nivel de detalle para fractales
     }
     app.figuras.append(nueva_figura)
     app.objeto_seleccionado = len(app.figuras) - 1
@@ -1521,14 +1635,122 @@ def dibujar_normales_objeto():
     glLineWidth(1)
     glEnable(GL_LIGHTING)
 
+def dibujar_esponja_menger(pos, nivel, escala=1.0, color=(0.8, 0.2, 0.2)):
+    """Dibuja un fractal de esponja de Menger 3D"""
+    glPushMatrix()
+    glTranslatef(*pos)
+    glScalef(escala, escala, escala)
+    glColor3f(*color)
+    
+    def dibujar_cubo(x, y, z, tamaño):
+        glPushMatrix()
+        glTranslatef(x - 1, y - 1, z - 1)
+        glutSolidCube(tamaño)
+        glPopMatrix()
+    
+    def menger(nivel, x, y, z, tamaño):
+        if nivel == 0:
+            dibujar_cubo(x, y, z, tamaño)
+        else:
+            tamaño /= 3.0
+            for i in range(3):
+                for j in range(3):
+                    for k in range(3):
+                        if (i == 1 and j == 1) or (i == 1 and k == 1) or (j == 1 and k == 1):
+                            continue
+                        menger(nivel - 1, x + i * tamaño, y + j * tamaño, z + k * tamaño, tamaño)
+    
+    menger(nivel, 1.5, 1.5, 1.5, 3.0)
+    glPopMatrix()
+
+def dibujar_arbol_fractal(pos, nivel, angulo=30, escala=1.0, color=(0.1, 0.5, 0.1)):
+    """Dibuja un árbol fractal 3D"""
+    glPushMatrix()
+    glTranslatef(*pos)
+    glScalef(escala, escala, escala)
+    glColor3f(*color)
+    
+    def rama(n, longitud):
+        if n == 0:
+            return
+            
+        glPushMatrix()
+        glRotatef(random.uniform(-angulo, angulo), 1, 0, 0)
+        glRotatef(random.uniform(-angulo, angulo), 0, 1, 0)
+        
+        # Dibuja el tronco/rama
+        glBegin(GL_QUAD_STRIP)
+        radio = 0.1 * n
+        for i in range(13):
+            ang = i * 30 * math.pi / 180
+            glVertex3f(radio * math.cos(ang), 0, radio * math.sin(ang))
+            glVertex3f(radio * math.cos(ang), longitud, radio * math.sin(ang))
+        glEnd()
+        
+        glTranslatef(0, longitud, 0)
+        
+        # Ramas recursivas
+        for _ in range(3):
+            rama(n - 1, longitud * 0.7)
+        
+        glPopMatrix()
+    
+    rama(nivel, 2.0)
+    glPopMatrix()
+
+def dibujar_tetraedro_sierpinski(pos, nivel, escala=2.0, color=(0.4, 0.6, 0.8)):
+    """Dibuja un tetraedro de Sierpinski 3D"""
+    glPushMatrix()
+    glTranslatef(*pos)
+    glScalef(escala, escala, escala)
+    glColor3f(*color)
+    
+    def tetraedro(puntos):
+        glBegin(GL_TRIANGLES)
+        for i in range(4):
+            for j in range(i+1, 4):
+                for k in range(j+1, 4):
+                    glVertex3fv(puntos[i])
+                    glVertex3fv(puntos[j])
+                    glVertex3fv(puntos[k])
+        glEnd()
+    
+    def sierpinski(puntos, nivel):
+        if nivel == 0:
+            tetraedro(puntos)
+        else:
+            puntos_medios = [
+                [(puntos[0][0]+puntos[1][0])/2, (puntos[0][1]+puntos[1][1])/2, (puntos[0][2]+puntos[1][2])/2],
+                [(puntos[0][0]+puntos[2][0])/2, (puntos[0][1]+puntos[2][1])/2, (puntos[0][2]+puntos[2][2])/2],
+                [(puntos[0][0]+puntos[3][0])/2, (puntos[0][1]+puntos[3][1])/2, (puntos[0][2]+puntos[3][2])/2],
+                [(puntos[1][0]+puntos[2][0])/2, (puntos[1][1]+puntos[2][1])/2, (puntos[1][2]+puntos[2][2])/2],
+                [(puntos[1][0]+puntos[3][0])/2, (puntos[1][1]+puntos[3][1])/2, (puntos[1][2]+puntos[3][2])/2],
+                [(puntos[2][0]+puntos[3][0])/2, (puntos[2][1]+puntos[3][1])/2, (puntos[2][2]+puntos[3][2])/2]
+            ]
+            
+            nuevos_puntos = [
+                [puntos[0], puntos_medios[0], puntos_medios[1], puntos_medios[2]],
+                [puntos_medios[0], puntos[1], puntos_medios[3], puntos_medios[4]],
+                [puntos_medios[1], puntos_medios[3], puntos[2], puntos_medios[5]],
+                [puntos_medios[2], puntos_medios[4], puntos_medios[5], puntos[3]]
+            ]
+            
+            for p in nuevos_puntos:
+                sierpinski(p, nivel-1)
+    
+    puntos_base = [
+        [1, -1, -1/math.sqrt(2)],
+        [-1, -1, -1/math.sqrt(2)],
+        [0, 1, -1/math.sqrt(2)],
+        [0, 0, math.sqrt(2)-1/math.sqrt(2)]
+    ]
+    
+    sierpinski(puntos_base, nivel)
+    glPopMatrix()
+
 def display():
     glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT)
     glLoadIdentity()
-
-    if app.modo_juego:
-        dibujar_escena_juego()
-        glutSwapBuffers()
-        return
     
     aplicar_eliminacion_ocultas()  # Aplicar configuraciones de eliminación
     
@@ -1566,9 +1788,18 @@ def display():
             dibujar_casa(figura['pos'], figura['escala'], figura['rotacion'], figura['color'], seleccionada)
         elif figura['tipo'] == 'montana':
             dibujar_montana(figura['pos'], figura['escala'], figura['rotacion'], figura['color'], seleccionada)
+        elif figura['tipo'] == 'esponja_menger':
+            dibujar_esponja_menger(figura['pos'], figura['nivel'], figura['escala'][0], figura['color'])
+        elif figura['tipo'] == 'arbol_fractal':
+            dibujar_arbol_fractal(figura['pos'], figura['nivel'], 30, figura['escala'][0], figura['color'])
+        elif figura['tipo'] == 'sierpinski':
+            dibujar_tetraedro_sierpinski(figura['pos'], figura['nivel'], figura['escala'][0], figura['color'])
     
     dibujar_normales_objeto()  # Dibujar normales si están habilitadas
-    
+    if app.modo_juego:
+        dibujar_esponja_menger([-3, 0, 0], 3, 0.5, [0.8, 0.2, 0.2])
+        dibujar_arbol_fractal([0, 0, 3], 4, 30, 0.5, [0.1, 0.5, 0.1])
+        dibujar_tetraedro_sierpinski([2.5, 1.5, -1.5], 3, 0.4, [0.4, 0.6, 0.8])
     dibujar_barra_herramientas()
     mostrar_coordenadas()
     
@@ -1851,10 +2082,35 @@ def mouse(btn, estado, x, y):
                 app.submenu_ocultas_visible = not app.submenu_ocultas_visible
                 app.submenu_textura_visible = False
                 app.submenu_figuras_visible = False
-            elif 1000 <= x <= 1100:  # Botón Juego
-                app.modo_juego = not app.modo_juego
-                print(f"Modo juego {'activado' if app.modo_juego else 'desactivado'}")
-                glutPostRedisplay()
+            elif 1000 <= x <= 1100:  # Botón Fractales 3D
+                app.submenu_fractales_visible = not app.submenu_fractales_visible
+                app.submenu_textura_visible = False
+                app.submenu_figuras_visible = False
+            glutPostRedisplay()
+            return
+        
+        # Submenú de fractales
+        elif app.submenu_fractales_visible and 1000 <= x <= 1200 and 40 <= y <= 160:
+            if 1010 <= x <= 1200:  # Ancho de las opciones
+                if 60 <= y <= 80:  # Esponja Menger
+                    app.modo_edicion = 'colocar_fractal'
+                    app.modal_placing = True
+                    app.tipo_figura = 'esponja_menger'
+                    app.submenu_fractales_visible = False
+                    print("Modo: Colocar Esponja Menger - Click en el terreno")
+                elif 90 <= y <= 110:  # Árbol Fractal
+                    app.modo_edicion = 'colocar_fractal'
+                    app.modal_placing = True
+                    app.tipo_figura = 'arbol_fractal'
+                    app.submenu_fractales_visible = False
+                    print("Modo: Colocar Árbol Fractal - Click en el terreno")
+                elif 120 <= y <= 140:  # Sierpinski
+                    app.modo_edicion = 'colocar_fractal'
+                    app.modal_placing = True
+                    app.tipo_figura = 'sierpinski'
+                    app.submenu_fractales_visible = False
+                    print("Modo: Colocar Tetraedro Sierpinski - Click en el terreno")
+            glutPostRedisplay()
             return
         
         # Submenú de figuras
@@ -1935,6 +2191,8 @@ def mouse(btn, estado, x, y):
             app.submenu_textura_visible = False
             glutPostRedisplay()
             return
+        
+        
         
         # Detectar cara para escalado si estamos en modo escalado
         if app.escalando:
