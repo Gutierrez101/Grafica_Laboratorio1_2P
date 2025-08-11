@@ -1,10 +1,32 @@
-# Ventana de visualización 3D con OpenGL - Versión Mejorada
+"""
+EDITOR 3D INTERACTIVO CON OPENGL
+================================
+
+Editor 3D completo que permite crear, manipular y visualizar escenas tridimensionales.
+
+CARACTERÍSTICAS:
+- Creación de objetos: Cubos, esferas, torus, cámaras y luces
+- Transformaciones directas: G(mover), R(rotar), E(escalar)
+- Sistema de texturas y colores personalizables
+- Navegación: Vista libre o cámaras fijas
+- Algoritmos de eliminación de lineas y de superficies ocultas (z-buffer)
+- Interfaz intuitiva con barra de herramientas
+
+CONTROLES BÁSICOS:
+- Clic izquierdo: Colocar objetos / Usar herramientas
+- Clic derecho: Seleccionar objetos
+- G/R/E: Transformar objetos seleccionados
+- Flechas: Navegar o transformar precisamente
+- V: Cambiar vista cámara/libre
+- ESC: Salir
+
+Ideal para prototipado 3D, educación en gráficos y modelado básico.
+"""
 from OpenGL.GL import *
 from OpenGL.GLU import *
 from OpenGL.GLUT import *
 from OpenGL.GLUT import GLUT_BITMAP_9_BY_15
 from OpenGL.GLUT import GLUT_KEY_UP, GLUT_KEY_DOWN, GLUT_KEY_LEFT, GLUT_KEY_RIGHT
-from juego import dibujar_escena_juego
 
 import sys
 import math
@@ -16,8 +38,6 @@ from tkinter import colorchooser, filedialog
 # Estados de la aplicación
 class AppState:
     def __init__(self):
-
-        self.modo_juego = False
 
         self.back_face_culling = True  # Eliminación de caras traseras
         self.z_buffer_activo = True    # Z-buffer para superficies ocultas
@@ -637,7 +657,6 @@ def dibujar_barra_herramientas():
         ("Vista Cam", 890, app.camara_actual is not None),
         ("Vista Libre", 1000, app.camara_actual is None),
         ("Ocultas", 1110, False),
-        ("Juego", 1220, app.modo_juego)
     ]
     
     for nombre, x, activo in botones:
@@ -1456,11 +1475,6 @@ def dibujar_normales_torus(pos, escala):
 def display():
     glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT)
     glLoadIdentity()
-
-    if app.modo_juego:
-        dibujar_escena_juego()
-        glutSwapBuffers()
-        return
     
     aplicar_eliminacion_ocultas()  # Aplicar configuraciones de eliminación
     
@@ -1798,10 +1812,6 @@ def mouse(btn, estado, x, y):
             elif 1110 <= x <= 1210:  # Botón Ocultas
                 app.submenu_ocultas_visible = not app.submenu_ocultas_visible
                 app.submenu_textura_visible = False  # Cerrar otro submenú
-            elif 1220 <= x <= 1320:  # Botón Juego
-                app.modo_juego = not app.modo_juego
-                print(f"Modo juego {'activado' if app.modo_juego else 'desactivado'}")
-                glutPostRedisplay()
             return
         
         elif app.submenu_ocultas_visible and 1110 <= x <= 1290 and 40 <= y <= 160:
