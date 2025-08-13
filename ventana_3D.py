@@ -13,13 +13,15 @@ import tkinter as tk
 from tkinter import colorchooser, filedialog
 import random
 
+
 # Estados de la aplicación
 class AppState:
     def __init__(self):
+        self.teclas_presionadas = set()
         self.submenu_fractales_visible = False  # Nuevo submenú para fractales
         self.modo_juego = False  # Cambiar esto, ya no lo usaremos como bandera
 
-        self.back_face_culling = True  # Eliminación de caras traseras
+        self.back_face_culling = False # Eliminación de caras traseras
         self.z_buffer_activo = True    # Z-buffer para superficies ocultas
         self.mostrar_normales = False  # Mostrar vectores normales
         self.algoritmo_ocultas = "z_buffer"  # Algoritmo actual
@@ -46,8 +48,8 @@ class AppState:
         self.modo_visualizacion = "solido"
         
         # Terreno
-        self.tamanio_terreno = 20
-        self.divisiones_terreno = 50
+        self.tamanio_terreno = 100
+        self.divisiones_terreno = 200
         self.color_terreno = (0.2, 0.25, 0.3)
         self.color_lineas = (0.4, 0.4, 0.4)
         self.textura_terreno = None
@@ -100,10 +102,22 @@ class AppState:
         self.camara_actual = None
         self.luz_actual = 0
 
+        self.modo_juego = False
+        self.velocidad_carro = 0.0
+        self.velocidad_maxima = 0.2
+        self.aceleracion = 0.005
+        self.frenado = 0.01
+        self.rotacion_carro = 0.0
+        self.velocidad_rotacion = 1.5
+        self.inercia = 0.98  # Factor de desaceleración
+
+        # Identificador del carro del jugador
+        self.carro_jugador = None
+
 app = AppState()
 
 def cargar_textura(ruta_imagen):
-    """Cargar una textura desde un archivo de imagen"""
+    """Cargar una textura desde un archivo de imagen con mipmaps"""
     try:
         imagen = Image.open(ruta_imagen)
         imagen = imagen.transpose(Image.FLIP_TOP_BOTTOM)
@@ -114,11 +128,11 @@ def cargar_textura(ruta_imagen):
         
         glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_REPEAT)
         glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_REPEAT)
-        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR)
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR_MIPMAP_LINEAR)
         glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR)
         
-        glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, imagen.width, imagen.height, 
-                        0, GL_RGBA, GL_UNSIGNED_BYTE, datos)
+        gluBuild2DMipmaps(GL_TEXTURE_2D, GL_RGBA, imagen.width, imagen.height, 
+                         GL_RGBA, GL_UNSIGNED_BYTE, datos)
         
         return textura_id
     except Exception as e:
@@ -129,10 +143,10 @@ def init():
     glClearColor(0.1, 0.1, 0.1, 1.0)
     glEnable(GL_DEPTH_TEST)
     
-    glDepthFunc(GL_LESS)  # Función de comparación Z-buffer
-    glEnable(GL_CULL_FACE)  # Habilitar eliminación de caras
-    glCullFace(GL_BACK)     # Eliminar caras traseras
-    glFrontFace(GL_CCW)     # Orientación antihoraria para caras frontales
+    glDepthFunc(GL_LESS)
+    glEnable(GL_CULL_FACE)
+    glCullFace(GL_BACK)
+    glFrontFace(GL_CCW)
     
     glEnable(GL_LIGHTING)
     configurar_luz_global()
@@ -140,6 +154,105 @@ def init():
     glColorMaterial(GL_FRONT_AND_BACK, GL_AMBIENT_AND_DIFFUSE)
     glShadeModel(GL_SMOOTH)
     glEnable(GL_TEXTURE_2D)
+    
+    # Configurar parámetros de textura para mejor visualización en cubo
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_REPEAT)
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_REPEAT)
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR_MIPMAP_LINEAR)
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR)
+    
+    # Cargar textura por defecto para el terreno
+    try:
+        # Crear una textura de hierba para la parte superior y piedra para los lados
+        textura_data = np.zeros((128, 128, 3), dtype=np.uint8)
+        for i in range(128):
+            for j in range(128):
+                if i < 64:  # Parte superior (hierba)
+                    if (i//8 + j//8) % 2 == 0:
+                        textura_data[i,j] = [50, 150, 50]  # Verde oscuro
+                    else:
+                        textura_data[i,j] = [100, 200, 100]  # Verde claro
+                else:  # Lados (piedra)
+                    if (i//4 + j//4) % 2 == 0:
+                        textura_data[i,j] = [100, 100, 100]  # Gris oscuro
+                    else:
+                        textura_data[i,j] = [150, 150, 150]  # Gris claro
+        
+        app.textura_terreno = glGenTextures(1)
+        glBindTexture(GL_TEXTURE_2D, app.textura_terreno)
+        
+        gluBuild2DMipmaps(GL_TEXTURE_2D, GL_RGB, 128, 128, GL_RGB, GL_UNSIGNED_BYTE, textura_data)
+        app.textura_habilitada = True
+    except Exception as e:
+        print(f"Error creando textura por defecto: {e}")
+        app.textura_terreno = None
+
+def dibujar_carretera():
+    # Configuración de la carretera
+    ancho = 6.0
+    longitud = app.tamanio_terreno
+    mitad = longitud / 2
+    segmentos = 100
+    
+    # Puntos de control para la carretera (puedes modificar estos puntos para cambiar la forma)
+    puntos_control = [
+        [-mitad*0.8, 0.01, -mitad*0.8],
+        [-mitad*0.5, 0.01, -mitad*0.3],
+        [0, 0.01, 0],
+        [mitad*0.4, 0.01, mitad*0.2],
+        [mitad*0.7, 0.01, mitad*0.7]
+    ]
+    
+    # Función para calcular punto en curva Bézier
+    def curva_bezier(t, puntos):
+        n = len(puntos) - 1
+        x, y, z = 0, 0, 0
+        for i in range(n + 1):
+            coef = math.comb(n, i) * (1-t)**(n-i) * t**i
+            x += puntos[i][0] * coef
+            y += puntos[i][1] * coef
+            z += puntos[i][2] * coef
+        return [x, y, z]
+    
+    # Dibujar la carretera
+    glDisable(GL_LIGHTING)
+    glColor3f(0.2, 0.2, 0.2)  # Color gris oscuro para la carretera
+    
+    glBegin(GL_QUAD_STRIP)
+    for i in range(segmentos + 1):
+        t = i / segmentos
+        punto = curva_bezier(t, puntos_control)
+        
+        # Calcular derivada para la normal (dirección tangente)
+        t2 = min(t + 0.01, 1.0)
+        punto2 = curva_bezier(t2, puntos_control)
+        dx = punto2[0] - punto[0]
+        dz = punto2[2] - punto[2]
+        longitud_normal = math.sqrt(dx*dx + dz*dz)
+        if longitud_normal > 0:
+            dx /= longitud_normal
+            dz /= longitud_normal
+        
+        # Puntos a los lados de la curva central
+        punto_izq = [punto[0] - dz * ancho/2, punto[1], punto[2] + dx * ancho/2]
+        punto_der = [punto[0] + dz * ancho/2, punto[1], punto[2] - dx * ancho/2]
+        
+        glVertex3f(*punto_izq)
+        glVertex3f(*punto_der)
+    glEnd()
+    
+    # Dibujar líneas divisorias
+    glColor3f(1.0, 1.0, 0.0)  # Amarillo para las líneas
+    glLineWidth(2.0)
+    glBegin(GL_LINE_STRIP)
+    for i in range(segmentos + 1):
+        t = i / segmentos
+        punto = curva_bezier(t, puntos_control)
+        glVertex3f(punto[0], punto[1] + 0.01, punto[2])
+    glEnd()
+    glLineWidth(1.0)
+    
+    glEnable(GL_LIGHTING)
 
 def configurar_proyeccion():
     glMatrixMode(GL_PROJECTION)
@@ -195,7 +308,11 @@ def dibujar_ejes():
     glLineWidth(1)
 
 def dibujar_terreno():
-    # Terreno principal
+    tamaño = app.tamanio_terreno
+    mitad = tamaño / 2
+    altura = 1  # Altura del cubo del terreno
+    
+    # Habilitar textura si está configurada
     if app.textura_terreno and app.textura_habilitada:
         glEnable(GL_TEXTURE_2D)
         glBindTexture(GL_TEXTURE_2D, app.textura_terreno)
@@ -206,17 +323,48 @@ def dibujar_terreno():
     
     glPolygonMode(GL_FRONT_AND_BACK, GL_FILL)
     
-    tamaño = app.tamanio_terreno
-    mitad = tamaño / 2
-    
+    # Dibujar el cubo del terreno con texturas correctamente mapeadas
     glBegin(GL_QUADS)
-    glTexCoord2f(0, 0); glVertex3f(-mitad, 0, -mitad)
-    glTexCoord2f(1, 0); glVertex3f(mitad, 0, -mitad)
+    
+    # Cara superior (parte de abajo del terreno)
+    glTexCoord2f(0, 0); glVertex3f(-mitad, -altura, -mitad)
+    glTexCoord2f(1, 0); glVertex3f(mitad, -altura, -mitad)
+    glTexCoord2f(1, 1); glVertex3f(mitad, -altura, mitad)
+    glTexCoord2f(0, 1); glVertex3f(-mitad, -altura, mitad)
+    
+    # Cara inferior (parte de arriba del terreno)
+    glTexCoord2f(0, 1); glVertex3f(-mitad, 0, -mitad)
+    glTexCoord2f(1, 1); glVertex3f(mitad, 0, -mitad)
+    glTexCoord2f(1, 0); glVertex3f(mitad, 0, mitad)
+    glTexCoord2f(0, 0); glVertex3f(-mitad, 0, mitad)
+    
+    # Cara frontal (ajustada para la nueva orientación)
+    glTexCoord2f(0, 0); glVertex3f(-mitad, -altura, mitad)
+    glTexCoord2f(1, 0); glVertex3f(mitad, -altura, mitad)
     glTexCoord2f(1, 1); glVertex3f(mitad, 0, mitad)
     glTexCoord2f(0, 1); glVertex3f(-mitad, 0, mitad)
+    
+    # Cara trasera (ajustada)
+    glTexCoord2f(0, 0); glVertex3f(-mitad, -altura, -mitad)
+    glTexCoord2f(1, 0); glVertex3f(mitad, -altura, -mitad)
+    glTexCoord2f(1, 1); glVertex3f(mitad, 0, -mitad)
+    glTexCoord2f(0, 1); glVertex3f(-mitad, 0, -mitad)
+    
+    # Cara izquierda (ajustada)
+    glTexCoord2f(0, 0); glVertex3f(-mitad, -altura, -mitad)
+    glTexCoord2f(1, 0); glVertex3f(-mitad, -altura, mitad)
+    glTexCoord2f(1, 1); glVertex3f(-mitad, 0, mitad)
+    glTexCoord2f(0, 1); glVertex3f(-mitad, 0, -mitad)
+    
+    # Cara derecha (ajustada)
+    glTexCoord2f(0, 0); glVertex3f(mitad, -altura, -mitad)
+    glTexCoord2f(1, 0); glVertex3f(mitad, -altura, mitad)
+    glTexCoord2f(1, 1); glVertex3f(mitad, 0, mitad)
+    glTexCoord2f(0, 1); glVertex3f(mitad, 0, -mitad)
+    
     glEnd()
     
-    # Cuadrícula sobre el terreno
+    # Resto del código para dibujar la cuadrícula...
     glDisable(GL_TEXTURE_2D)
     glColor3f(*app.color_lineas)
     glPolygonMode(GL_FRONT_AND_BACK, GL_LINE)
@@ -228,10 +376,10 @@ def dibujar_terreno():
     glBegin(GL_LINES)
     for i in range(0, divisiones + 1, 5):
         x = i * paso - mitad
-        glVertex3f(x, 0.01, -mitad)
-        glVertex3f(x, 0.01, mitad)
-        glVertex3f(-mitad, 0.01, x)
-        glVertex3f(mitad, 0.01, x)
+        glVertex3f(x, -altura + 0.01, -mitad)
+        glVertex3f(x, -altura + 0.01, mitad)
+        glVertex3f(-mitad, -altura + 0.01, x)
+        glVertex3f(mitad, -altura + 0.01, x)
     glEnd()
     
     glLineWidth(0.5)
@@ -239,10 +387,10 @@ def dibujar_terreno():
     for i in range(divisiones + 1):
         if i % 5 != 0:
             x = i * paso - mitad
-            glVertex3f(x, 0.01, -mitad)
-            glVertex3f(x, 0.01, mitad)
-            glVertex3f(-mitad, 0.01, x)
-            glVertex3f(mitad, 0.01, x)
+            glVertex3f(x, -altura + 0.01, -mitad)
+            glVertex3f(x, -altura + 0.01, mitad)
+            glVertex3f(-mitad, -altura + 0.01, x)
+            glVertex3f(mitad, -altura + 0.01, x)
     glEnd()
     
     glLineWidth(1)
@@ -278,6 +426,12 @@ def dibujar_manipuladores_escalado(pos, escala):
     glPopMatrix()
     glEnable(GL_LIGHTING)
 
+def teclado_up(key, x, y):
+    """Función que se llama cuando se SUELTA una tecla"""
+    k = key.decode("utf-8").lower()
+    app.teclas_presionadas.discard(k)
+    glutPostRedisplay()
+
 def configurar_material_carro():
     """Configurar material específico para el carro - CORREGIDO"""
     # Material base para la carrocería (negro metálico)
@@ -297,8 +451,8 @@ def configurar_material_carro():
 def dibujar_carro(pos, escala=(1,1,1), rotacion=(0,0,0), color=(0.8, 0.2, 0.2), seleccionado=False):
     glPushMatrix()
     glTranslatef(*pos)
+    glRotatef(rotacion[1] - 90, 0, 1, 0)  # Restamos 90 grados para alinear con Z+
     glRotatef(rotacion[0], 1, 0, 0)
-    glRotatef(rotacion[1], 0, 1, 0)
     glRotatef(rotacion[2], 0, 0, 1)
     glScalef(*escala)
     glDisable(GL_LIGHTING)
@@ -1012,7 +1166,7 @@ def dibujar_barra_herramientas():
         ("Luz", 230, app.modo_edicion == 'colocar_luz'),
         ("Figuras", 340, app.modo_edicion == 'colocar_figura'),
         ("Textura", 450, False),
-        ("Eliminar", 560, False),
+        ("Carretera", 560, False),
         ("Vista Cam", 670, app.camara_actual is not None),
         ("Vista Libre", 780, app.camara_actual is None),
         ("Ocultas", 890, False),
@@ -1759,38 +1913,158 @@ def dibujar_tetraedro_sierpinski(pos, nivel, escala=2.0, color=(0.4, 0.6, 0.8)):
     sierpinski(puntos_base, nivel)
     glPopMatrix()
 
+# Función para activar el modo juego
+def activar_modo_juego():
+    app.modo_juego = True
+    app.selection_mode = False
+    app.modal_placing = False
+    app.modo_edicion = None
+    app.dragging = False
+    app.rotando = False
+    app.escalando = False
+    app.teclas_presionadas.clear()  # ← AGREGAR ESTA LÍNEA
+    
+    # Buscar un carro existente o crear uno si no hay
+    if not any(fig['tipo'] == 'carro' for fig in app.figuras):
+        agregar_figura([0, 0, 0], 'carro')
+        app.carro_jugador = len(app.figuras) - 1
+    else:
+        # Usar el primer carro encontrado
+        for i, fig in enumerate(app.figuras):
+            if fig['tipo'] == 'carro':
+                app.carro_jugador = i
+                break
+    
+    print("Modo juego activado - Usa WASD para manejar el carro")
+
+def manejar_controles_carro():
+    """Nueva función que maneja los controles del carro usando teclas simultáneas"""
+    if not app.modo_juego:
+        return
+    
+    # Resetear rotación
+    app.rotacion_carro = 0.0
+    app.aceleracion = 0.002     # antes quizá era 0.1 o más
+    app.velocidad_maxima = 0.05 # antes quizá era 2 o 1
+    app.velocidad_rotacion = 0.5  # grados por frame (también puedes bajarlo)
+    app.frenado = 0.005
+    
+    # Movimiento hacia adelante/atrás
+    if 'w' in app.teclas_presionadas:
+        app.velocidad_carro = min(app.velocidad_carro + app.aceleracion, app.velocidad_maxima)
+    if 's' in app.teclas_presionadas:
+        app.velocidad_carro = max(app.velocidad_carro - app.aceleracion, -app.velocidad_maxima/2)
+    
+    # Rotación izquierda/derecha
+    if 'a' in app.teclas_presionadas:
+        app.rotacion_carro = app.velocidad_rotacion
+    if 'd' in app.teclas_presionadas:
+        app.rotacion_carro = -app.velocidad_rotacion
+    
+    # Freno de mano
+    if ' ' in app.teclas_presionadas:  # Espacio
+        if app.velocidad_carro > 0:
+            app.velocidad_carro = max(0, app.velocidad_carro - app.frenado)
+        else:
+            app.velocidad_carro = min(0, app.velocidad_carro + app.frenado)
+
+# Función para actualizar el movimiento del carro
+def actualizar_movimiento_carro():
+    if not app.modo_juego or app.carro_jugador is None:
+        return
+    
+    carro = app.figuras[app.carro_jugador]
+    
+    # Aplicar inercia a la velocidad
+    app.velocidad_carro *= app.inercia
+    if abs(app.velocidad_carro) < 0.001:
+        app.velocidad_carro = 0.0
+    
+    # Aplicar inercia a la rotación (esto es lo que faltaba)
+    app.rotacion_carro *= 0.8  # Factor de inercia para rotación (ajustable)
+    if abs(app.rotacion_carro) < 0.01:
+        app.rotacion_carro = 0.0
+    
+    # Calcular nueva posición
+    angulo_rad = math.radians(carro['rotacion'][1])
+    dx = math.sin(angulo_rad) * app.velocidad_carro
+    dz = math.cos(angulo_rad) * app.velocidad_carro
+    
+    # Actualizar posición
+    carro['pos'][0] += dx
+    carro['pos'][2] += dz
+    
+    # Aplicar rotación
+    carro['rotacion'][1] += app.rotacion_carro
+    
+    # Limitar al terreno
+    mitad = app.tamanio_terreno / 2
+    carro['pos'][0] = max(-mitad, min(mitad, carro['pos'][0]))
+    carro['pos'][2] = max(-mitad, min(mitad, carro['pos'][2]))
+
 def display():
     glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT)
     glLoadIdentity()
     
-    aplicar_eliminacion_ocultas()  # Aplicar configuraciones de eliminación
+    aplicar_eliminacion_ocultas()
     
-    if app.camara_actual is not None and app.camaras:
+    # Configurar vista según el modo
+    if app.modo_juego and app.carro_jugador is not None and app.carro_jugador < len(app.figuras):
+        carro = app.figuras[app.carro_jugador]
+        distancia = 5.0
+        altura = 2.0
+        
+        # Calcular posición de la cámara (detrás y arriba del carro)
+        angulo_rad = math.radians(carro['rotacion'][1])
+        cam_x = carro['pos'][0] - math.sin(angulo_rad) * distancia
+        cam_y = carro['pos'][1] + altura
+        cam_z = carro['pos'][2] - math.cos(angulo_rad) * distancia
+        
+        # Punto al que mira la cámara (ligeramente delante del carro)
+        look_x = carro['pos'][0] + math.sin(angulo_rad) * 2
+        look_y = carro['pos'][1] + 0.5
+        look_z = carro['pos'][2] + math.cos(angulo_rad) * 2
+        
+        gluLookAt(cam_x, cam_y, cam_z,
+                  look_x, look_y, look_z,
+                  0, 1, 0)
+    elif app.camara_actual is not None and app.camaras:
+        # Vista desde cámara seleccionada
         cam = app.camaras[app.camara_actual]
         gluLookAt(cam['pos'][0], cam['pos'][1], cam['pos'][2],
-                    cam['look_at'][0], cam['look_at'][1], cam['look_at'][2],
-                    cam['up'][0], cam['up'][1], cam['up'][2])
+                  cam['look_at'][0], cam['look_at'][1], cam['look_at'][2],
+                  cam['up'][0], cam['up'][1], cam['up'][2])
     else:
+        # Vista libre por defecto
         gluLookAt(5, 5, 10, 0, 0, 0, 0, 1, 0)
         glRotatef(app.angulo_x, 1, 0, 0)
         glRotatef(app.angulo_y, 0, 1, 0)
     
     dibujar_terreno()
+    dibujar_carretera()  # <-- Añade esta línea
     
-    for i, cam in enumerate(app.camaras):
-        seleccionada = (app.objeto_seleccionado == i and app.tipo_seleccion == 'camara')
-        dibujar_camara(cam['pos'], cam['look_at'], cam['up'], 
-                        cam['escala'], cam['rotacion'], seleccionada)
+    # Dibujar cámaras (excepto en modo juego)
+    if not app.modo_juego:
+        for i, cam in enumerate(app.camaras):
+            seleccionada = (app.objeto_seleccionado == i and app.tipo_seleccion == 'camara')
+            dibujar_camara(cam['pos'], cam['look_at'], cam['up'], 
+                          cam['escala'], cam['rotacion'], seleccionada)
     
+    # Dibujar luces
     for i, luz in enumerate(app.luces):
         seleccionada = (app.objeto_seleccionado == i and app.tipo_seleccion == 'luz')
         dibujar_luz(luz['pos'], luz['color'], luz['tipo_luz'],
                     luz['escala'], luz['rotacion'], seleccionada)
     
+    # Dibujar figuras
     for i, figura in enumerate(app.figuras):
         seleccionada = (app.objeto_seleccionado == i and app.tipo_seleccion == 'figura')
         if figura['tipo'] == 'carro':
-            dibujar_carro(figura['pos'], figura['escala'], figura['rotacion'], figura['color'], seleccionada)
+            # Resaltar el carro del jugador en modo juego
+            if app.modo_juego and i == app.carro_jugador:
+                dibujar_carro(figura['pos'], figura['escala'], figura['rotacion'], [0.8, 0.1, 0.1], True)
+            else:
+                dibujar_carro(figura['pos'], figura['escala'], figura['rotacion'], figura['color'], seleccionada)
         elif figura['tipo'] == 'arbol':
             dibujar_arbol(figura['pos'], figura['escala'], figura['rotacion'], figura['color'], seleccionada)
         elif figura['tipo'] == 'arbusto':
@@ -1806,19 +2080,53 @@ def display():
         elif figura['tipo'] == 'sierpinski':
             dibujar_tetraedro_sierpinski(figura['pos'], figura['nivel'], figura['escala'][0], figura['color'])
     
-    dibujar_normales_objeto()  # Dibujar normales si están habilitadas
+    dibujar_normales_objeto()
+    
+    # Dibujar elementos adicionales en modo juego
     if app.modo_juego:
-        dibujar_esponja_menger([-3, 0, 0], 3, 0.5, [0.8, 0.2, 0.2])
-        dibujar_arbol_fractal([0, 0, 3], 4, 30, 0.5, [0.1, 0.5, 0.1])
-        dibujar_tetraedro_sierpinski([2.5, 1.5, -1.5], 3, 0.4, [0.4, 0.6, 0.8])
+        # Mostrar controles en pantalla
+        glMatrixMode(GL_PROJECTION)
+        glPushMatrix()
+        glLoadIdentity()
+        gluOrtho2D(0, app.WIDTH, app.HEIGHT, 0)
+        
+        glMatrixMode(GL_MODELVIEW)
+        glPushMatrix()
+        glLoadIdentity()
+        glDisable(GL_LIGHTING)
+        
+        glColor3f(1, 1, 1)
+        glRasterPos2f(10, app.HEIGHT - 30)
+        controles = "Controles: W-Acelerar, S-Frenar, A-Girar Izq, D-Girar Der, ESPACIO-Freno, M-Salir"
+        for char in controles:
+            glutBitmapCharacter(GLUT_BITMAP_9_BY_15, ord(char))
+            
+        # Mostrar velocidad actual
+        glRasterPos2f(10, app.HEIGHT - 50)
+        velocidad_texto = f"Velocidad: {abs(app.velocidad_carro)*100:.1f} km/h"
+        for char in velocidad_texto:
+            glutBitmapCharacter(GLUT_BITMAP_9_BY_15, ord(char))
+        
+        glEnable(GL_LIGHTING)
+        glPopMatrix()
+        glMatrixMode(GL_PROJECTION)
+        glPopMatrix()
+        glMatrixMode(GL_MODELVIEW)
+    
     dibujar_barra_herramientas()
     mostrar_coordenadas()
     
     glutSwapBuffers()
 
 def idle():
-    if app.ventana_activa and app.auto_rotar:
-        app.angulo_y += app.velocidad_auto
+    if app.ventana_activa:
+        if app.auto_rotar:
+            app.angulo_y += app.velocidad_auto
+        
+        if app.modo_juego:
+            manejar_controles_carro()  
+            actualizar_movimiento_carro()
+        
         glutPostRedisplay()
 
 def reshape(w, h):
@@ -1832,6 +2140,40 @@ def teclado(key, x, y):
     if k == "\x1b":  # ESC para salir
         app.salir_ventana = True
         glutDestroyWindow(glutGetWindow())
+        return
+    # Agregar la tecla al conjunto de teclas presionadas
+    app.teclas_presionadas.add(k)
+
+    if app.modo_juego:
+        if k == 'm':  # Salir del modo juego
+            app.modo_juego = False
+            app.rotacion_carro = 0.0
+            app.velocidad_carro = 0.0
+            app.teclas_presionadas.clear()  # ← AGREGAR ESTA LÍNEA
+            print("Modo juego desactivado")
+            glutPostRedisplay()
+        return
+    
+    elif k == 't':  # Cambiar textura del terreno
+        root = tk.Tk()
+        root.withdraw()
+        file_path = filedialog.askopenfilename(title="Seleccionar textura para terreno", 
+                                            filetypes=[("Image files", "*.jpg *.jpeg *.png")])
+        if file_path:
+            textura_id = cargar_textura(file_path)
+            if textura_id:
+                if app.textura_terreno:
+                    glDeleteTextures([app.textura_terreno])
+                app.textura_terreno = textura_id
+                app.textura_path = file_path
+                app.textura_habilitada = True
+                print(f"Textura del terreno cambiada: {file_path}")
+
+    # Activar modo juego con 'j'
+    elif k == 'j':
+        app.teclas_presionadas = set() 
+        activar_modo_juego()
+        glutPostRedisplay()
         return
     
     # Resetear modos
@@ -2279,6 +2621,7 @@ def motion(x, y):
         glutPostRedisplay()
 
 def abrir_ventana_3d():
+    
     glutInit(sys.argv)
     glutInitDisplayMode(GLUT_DOUBLE | GLUT_RGB | GLUT_DEPTH)
     glutInitWindowSize(app.WIDTH, app.HEIGHT)
@@ -2286,7 +2629,8 @@ def abrir_ventana_3d():
     
     init()
     configurar_proyeccion()
-    
+
+    glutKeyboardUpFunc(teclado_up)
     glutDisplayFunc(display)
     glutReshapeFunc(reshape)
     glutKeyboardFunc(teclado)
