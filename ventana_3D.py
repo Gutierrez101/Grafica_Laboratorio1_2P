@@ -116,6 +116,138 @@ class AppState:
 
 app = AppState()
 
+def calcular_matriz_sombra(luz_pos, plano_normal=[0, 1, 0], plano_d=0):
+    """Calcula la matriz de proyección de sombra CORREGIDA"""
+    lx, ly, lz = luz_pos[:3]
+    nx, ny, nz = plano_normal
+    
+    # Producto punto de la posición de la luz con la normal del plano + d
+    dot = lx * nx + ly * ny + lz * nz + plano_d
+    
+    # Crear matriz de proyección de sombra en formato OpenGL column-major
+    shadow_matrix = [
+        dot - lx * nx,  -lx * ny,       -lx * nz,       -lx * plano_d,
+        -ly * nx,       dot - ly * ny,  -ly * nz,       -ly * plano_d,
+        -lz * nx,       -lz * ny,       dot - lz * nz,  -lz * plano_d,
+        0,              0,              0,              dot
+    ]
+    
+    return shadow_matrix
+
+def dibujar_sombras_proyectadas_mejoradas():
+    """Sistema de sombras COMPLETAMENTE CORREGIDO"""
+    if not app.habilitar_sombra or not app.luces:
+        return
+    
+    # Guardar estados actuales
+    glPushAttrib(GL_ENABLE_BIT | GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT | GL_POLYGON_BIT)
+    
+    # Configurar para dibujar sombras
+    glDisable(GL_LIGHTING)
+    glDisable(GL_TEXTURE_2D)
+    glEnable(GL_BLEND)
+    glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA)
+    
+    # Configurar depth buffer para evitar z-fighting
+    glDepthMask(GL_FALSE)  # No escribir en depth buffer
+    glEnable(GL_POLYGON_OFFSET_FILL)
+    glPolygonOffset(-1.0, -1.0)  # Empujar hacia adelante
+    
+    # Dibujar sombras para cada luz activa
+    for i, luz in enumerate(app.luces):
+        if not luz.get('activa', True):
+            continue
+            
+        luz_pos = luz['pos'][:3]
+        
+        # Verificar que la luz esté por encima del suelo
+        if luz_pos[1] <= 0.1:
+            continue
+            
+        # Color de sombra semi-transparente
+        alpha = 0.6 / max(1, len([l for l in app.luces if l.get('activa', True)]))
+        glColor4f(0.0, 0.0, 0.0, alpha)
+        
+        # Aplicar matriz de sombra
+        glPushMatrix()
+        
+        # Crear matriz de sombra para el plano Y=0.01 (ligeramente sobre el suelo)
+        shadow_matrix = calcular_matriz_sombra(luz_pos, [0, 1, 0], 0.01)
+        glMultMatrixf(shadow_matrix)
+        
+        # Dibujar sombra de cada figura
+        for figura in app.figuras:
+            # Solo objetos que están sobre el suelo
+            if figura['pos'][1] > 0.05:  
+                dibujar_sombra_objeto_simple(figura)
+        
+        # Sombras de cámaras (si no estamos en modo juego)
+        if not app.modo_juego:
+            for camara in app.camaras:
+                if camara['pos'][1] > 0.05:
+                    glPushMatrix()
+                    glTranslatef(*camara['pos'])
+                    glScalef(0.8, 0.1, 1.2)  # Sombra aplastada de cámara
+                    glutSolidCube(1.0)
+                    glPopMatrix()
+        
+        glPopMatrix()
+    
+    # Restaurar estados
+    glPopAttrib()
+
+    #glDisable(GL_POLYGON_OFFSET_FILL)
+    #glDisable(GL_STENCIL_TEST)
+    #glDisable(GL_BLEND)
+    #glEnable(GL_LIGHTING)
+
+def dibujar_sombra_objeto_simple(figura):
+    """CORREGIDA: Función para dibujar sombras en el suelo"""
+    glPushMatrix()
+    
+    # Posicionar en la ubicación del objeto
+    glTranslatef(figura['pos'][0], 0.01, figura['pos'][2])
+    
+    # Aplicar rotación solo en Y para mantener sombra plana
+    glRotatef(figura['rotacion'][1], 0, 1, 0)
+    
+    # Escalar pero mantener Y muy pequeño para sombra plana
+    escala_sombra = [figura['escala'][0], 0.01, figura['escala'][2]]
+    glScalef(*escala_sombra)
+    
+    # Dibujar forma básica según el tipo
+    if figura['tipo'] == 'carro':
+        # Sombra del carro (forma más realista)
+        glPushMatrix()
+        glScalef(1.8, 1, 0.9)
+        glutSolidCube(1.0)
+        glPopMatrix()
+        
+    elif figura['tipo'] == 'arbol':
+        # Sombra circular para el árbol
+        glutSolidSphere(1.2, 8, 6)
+        
+    elif figura['tipo'] == 'arbusto':
+        # Sombra pequeña circular
+        glutSolidSphere(0.5, 8, 6)
+        
+    elif figura['tipo'] == 'casa':
+        # Sombra cuadrada para la casa
+        glPushMatrix()
+        glScalef(1.8, 1, 1.8)
+        glutSolidCube(1.0)
+        glPopMatrix()
+        
+    elif figura['tipo'] == 'montana':
+        # Sombra circular grande para montaña
+        glutSolidSphere(2.0, 12, 8)
+        
+    elif figura['tipo'] in ['esponja_menger', 'arbol_fractal', 'sierpinski']:
+        # Sombra cúbica para fractales
+        glutSolidCube(2.0)
+    
+    glPopMatrix()
+
 def cargar_textura(ruta_imagen):
     """Cargar una textura desde un archivo de imagen con mipmaps"""
     try:
@@ -140,10 +272,12 @@ def cargar_textura(ruta_imagen):
         return None
 
 def init():
+    """CORREGIDA: Función de inicialización con stencil buffer"""
     glClearColor(0.1, 0.1, 0.1, 1.0)
     glEnable(GL_DEPTH_TEST)
-    
     glDepthFunc(GL_LESS)
+    
+    glutInitDisplayMode(GLUT_DOUBLE | GLUT_RGB | GLUT_DEPTH | GLUT_STENCIL)
     glEnable(GL_CULL_FACE)
     glCullFace(GL_BACK)
     glFrontFace(GL_CCW)
@@ -155,28 +289,35 @@ def init():
     glShadeModel(GL_SMOOTH)
     glEnable(GL_TEXTURE_2D)
     
-    # Configurar parámetros de textura para mejor visualización en cubo
+    # NUEVO: Configurar stencil buffer para sombras
+    glClearStencil(0)
+    glStencilMask(0xFFFFFFFF)
+
+    # Habilitar blend para sombras transparentes
+    glEnable(GL_BLEND)
+    glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA)
+    
+    # Configurar parámetros de textura
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_REPEAT)
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_REPEAT)
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR_MIPMAP_LINEAR)
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR)
     
-    # Cargar textura por defecto para el terreno
+    # Crear textura por defecto para el terreno (resto del código igual)
     try:
-        # Crear una textura de hierba para la parte superior y piedra para los lados
         textura_data = np.zeros((128, 128, 3), dtype=np.uint8)
         for i in range(128):
             for j in range(128):
-                if i < 64:  # Parte superior (hierba)
+                if i < 64:
                     if (i//8 + j//8) % 2 == 0:
-                        textura_data[i,j] = [50, 150, 50]  # Verde oscuro
+                        textura_data[i,j] = [50, 150, 50]
                     else:
-                        textura_data[i,j] = [100, 200, 100]  # Verde claro
-                else:  # Lados (piedra)
+                        textura_data[i,j] = [100, 200, 100]
+                else:
                     if (i//4 + j//4) % 2 == 0:
-                        textura_data[i,j] = [100, 100, 100]  # Gris oscuro
+                        textura_data[i,j] = [100, 100, 100]
                     else:
-                        textura_data[i,j] = [150, 150, 150]  # Gris claro
+                        textura_data[i,j] = [150, 150, 150]
         
         app.textura_terreno = glGenTextures(1)
         glBindTexture(GL_TEXTURE_2D, app.textura_terreno)
@@ -186,6 +327,22 @@ def init():
     except Exception as e:
         print(f"Error creando textura por defecto: {e}")
         app.textura_terreno = None
+        # Inicializar sistema de sombras
+    app.habilitar_sombra = True
+
+def optimizar_rendering():
+    """Optimizaciones de rendering"""
+    # Configurar parámetros de OpenGL para mejor rendimiento
+    glHint(GL_PERSPECTIVE_CORRECTION_HINT, GL_FASTEST)
+    glHint(GL_POLYGON_SMOOTH_HINT, GL_FASTEST)
+    glHint(GL_LINE_SMOOTH_HINT, GL_FASTEST)
+    
+    # Limitar complejidad de fractales según FPS
+    if hasattr(app, 'fps_counter'):
+        if app.fps_counter < 30:  # Si FPS bajo
+            for figura in app.figuras:
+                if 'nivel' in figura and figura['nivel'] > 2:
+                    figura['nivel'] = 2  # Reducir detalle
 
 def dibujar_carretera():
     # Configuración de la carretera
@@ -265,12 +422,18 @@ def configurar_proyeccion():
     glMatrixMode(GL_MODELVIEW)
 
 def configurar_luz_global():
-    """Configurar luz global por defecto"""
+    """CORREGIDA: Configurar luz global por defecto"""
     glEnable(GL_LIGHT0)
-    glLightfv(GL_LIGHT0, GL_POSITION, [5.0, 10.0, 5.0, 1.0])
-    glLightfv(GL_LIGHT0, GL_DIFFUSE, [0.8, 0.8, 0.8, 1.0])
-    glLightfv(GL_LIGHT0, GL_AMBIENT, [0.2, 0.2, 0.2, 1.0])
+    # Posición más alta y centrada para mejores sombras
+    glLightfv(GL_LIGHT0, GL_POSITION, [0.0, 20.0, 0.0, 1.0])  # Luz puntual arriba
+    glLightfv(GL_LIGHT0, GL_DIFFUSE, [0.7, 0.7, 0.7, 1.0])
+    glLightfv(GL_LIGHT0, GL_AMBIENT, [0.3, 0.3, 0.3, 1.0])
     glLightfv(GL_LIGHT0, GL_SPECULAR, [1.0, 1.0, 1.0, 1.0])
+    
+    # Configurar atenuación para luz más suave
+    glLightf(GL_LIGHT0, GL_CONSTANT_ATTENUATION, 1.0)
+    glLightf(GL_LIGHT0, GL_LINEAR_ATTENUATION, 0.01)
+    glLightf(GL_LIGHT0, GL_QUADRATIC_ATTENUATION, 0.001)
 
 def configurar_luz(index):
     if index < 0 or index >= len(app.luces):
@@ -2002,25 +2165,25 @@ def actualizar_movimiento_carro():
     carro['pos'][0] = max(-mitad, min(mitad, carro['pos'][0]))
     carro['pos'][2] = max(-mitad, min(mitad, carro['pos'][2]))
 
-def display():
-    glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT)
+def display_con_sombras():
+    """CORREGIDA: Función display con sombras funcionales"""
+    # Limpiar todos los buffers incluyendo stencil
+    glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT | GL_STENCIL_BUFFER_BIT)
     glLoadIdentity()
     
     aplicar_eliminacion_ocultas()
     
-    # Configurar vista según el modo
+    # Configurar vista (código existente sin cambios)
     if app.modo_juego and app.carro_jugador is not None and app.carro_jugador < len(app.figuras):
         carro = app.figuras[app.carro_jugador]
         distancia = 5.0
         altura = 2.0
         
-        # Calcular posición de la cámara (detrás y arriba del carro)
         angulo_rad = math.radians(carro['rotacion'][1])
         cam_x = carro['pos'][0] - math.sin(angulo_rad) * distancia
         cam_y = carro['pos'][1] + altura
         cam_z = carro['pos'][2] - math.cos(angulo_rad) * distancia
         
-        # Punto al que mira la cámara (ligeramente delante del carro)
         look_x = carro['pos'][0] + math.sin(angulo_rad) * 2
         look_y = carro['pos'][1] + 0.5
         look_z = carro['pos'][2] + math.cos(angulo_rad) * 2
@@ -2029,20 +2192,29 @@ def display():
                   look_x, look_y, look_z,
                   0, 1, 0)
     elif app.camara_actual is not None and app.camaras:
-        # Vista desde cámara seleccionada
         cam = app.camaras[app.camara_actual]
         gluLookAt(cam['pos'][0], cam['pos'][1], cam['pos'][2],
                   cam['look_at'][0], cam['look_at'][1], cam['look_at'][2],
                   cam['up'][0], cam['up'][1], cam['up'][2])
     else:
-        # Vista libre por defecto
         gluLookAt(5, 5, 10, 0, 0, 0, 0, 1, 0)
         glRotatef(app.angulo_x, 1, 0, 0)
         glRotatef(app.angulo_y, 0, 1, 0)
     
-    dibujar_terreno()
-    dibujar_carretera()  # <-- Añade esta línea
+    # Configurar luces
+    configurar_luz_global()
+    for i in range(len(app.luces)):
+        configurar_luz(i)
     
+    # 1. PRIMERO: Dibujar el suelo/terreno
+    dibujar_terreno()
+    dibujar_carretera()
+    
+    # 2. SEGUNDO: Dibujar las sombras SOBRE el terreno
+    if app.habilitar_sombra:
+        dibujar_sombras_proyectadas_mejoradas()
+    
+    # 3. TERCERO: Dibujar todos los objetos 3D
     # Dibujar cámaras (excepto en modo juego)
     if not app.modo_juego:
         for i, cam in enumerate(app.camaras):
@@ -2060,7 +2232,6 @@ def display():
     for i, figura in enumerate(app.figuras):
         seleccionada = (app.objeto_seleccionado == i and app.tipo_seleccion == 'figura')
         if figura['tipo'] == 'carro':
-            # Resaltar el carro del jugador en modo juego
             if app.modo_juego and i == app.carro_jugador:
                 dibujar_carro(figura['pos'], figura['escala'], figura['rotacion'], [0.8, 0.1, 0.1], True)
             else:
@@ -2080,11 +2251,11 @@ def display():
         elif figura['tipo'] == 'sierpinski':
             dibujar_tetraedro_sierpinski(figura['pos'], figura['nivel'], figura['escala'][0], figura['color'])
     
+    # Dibujar elementos adicionales
     dibujar_normales_objeto()
     
-    # Dibujar elementos adicionales en modo juego
+    # Elementos de UI y controles (resto del código sin cambios)
     if app.modo_juego:
-        # Mostrar controles en pantalla
         glMatrixMode(GL_PROJECTION)
         glPushMatrix()
         glLoadIdentity()
@@ -2101,7 +2272,39 @@ def display():
         for char in controles:
             glutBitmapCharacter(GLUT_BITMAP_9_BY_15, ord(char))
             
-        # Mostrar velocidad actual
+        glRasterPos2f(10, app.HEIGHT - 50)
+        velocidad_texto = f"Velocidad: {abs(app.velocidad_carro)*100:.1f} km/h"
+        for char in velocidad_texto:
+            glutBitmapCharacter(GLUT_BITMAP_9_BY_15, ord(char))
+        
+        glEnable(GL_LIGHTING)
+        glPopMatrix()
+        glMatrixMode(GL_PROJECTION)
+        glPopMatrix()
+        glMatrixMode(GL_MODELVIEW)
+    
+    dibujar_barra_herramientas()
+    mostrar_coordenadas()
+    
+    
+    # Dibujar elementos adicionales en modo juego
+    if app.modo_juego:
+        glMatrixMode(GL_PROJECTION)
+        glPushMatrix()
+        glLoadIdentity()
+        gluOrtho2D(0, app.WIDTH, app.HEIGHT, 0)
+        
+        glMatrixMode(GL_MODELVIEW)
+        glPushMatrix()
+        glLoadIdentity()
+        glDisable(GL_LIGHTING)
+        
+        glColor3f(1, 1, 1)
+        glRasterPos2f(10, app.HEIGHT - 30)
+        controles = "Controles: W-Acelerar, S-Frenar, A-Girar Izq, D-Girar Der, ESPACIO-Freno, M-Salir"
+        for char in controles:
+            glutBitmapCharacter(GLUT_BITMAP_9_BY_15, ord(char))
+            
         glRasterPos2f(10, app.HEIGHT - 50)
         velocidad_texto = f"Velocidad: {abs(app.velocidad_carro)*100:.1f} km/h"
         for char in velocidad_texto:
@@ -2623,15 +2826,15 @@ def motion(x, y):
 def abrir_ventana_3d():
     
     glutInit(sys.argv)
-    glutInitDisplayMode(GLUT_DOUBLE | GLUT_RGB | GLUT_DEPTH)
+    glutInitDisplayMode(GLUT_DOUBLE | GLUT_RGB | GLUT_DEPTH | GLUT_STENCIL)
     glutInitWindowSize(app.WIDTH, app.HEIGHT)
-    glutCreateWindow(b"Editor 3D Mejorado - Figuras Complejas")
+    glutCreateWindow(b"Visualizador 3D con Sombras Proyectadas")
     
     init()
     configurar_proyeccion()
 
     glutKeyboardUpFunc(teclado_up)
-    glutDisplayFunc(display)
+    glutDisplayFunc(display_con_sombras)
     glutReshapeFunc(reshape)
     glutKeyboardFunc(teclado)
     glutSpecialFunc(teclado_especial)
